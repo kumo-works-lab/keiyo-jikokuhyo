@@ -1,18 +1,18 @@
 // 京葉線 発車時刻ウィジェット（Scriptable用）
-// ウィジェットの「Parameter」に次のどれかを入れると区間を選べます（空なら tokyo）
-//   tokyo    … 稲毛海岸 → 東京
+// ウィジェットの「Parameter」に次のどれかを入れると区間を選べます（空なら makuhari）
 //   makuhari … 稲毛海岸 → 海浜幕張
+//   tokyo    … 稲毛海岸 → 東京（途中で乗り換えた方が早ければ、乗換回数と駅を表示）
 //   back     … 海浜幕張 → 稲毛海岸
 //   ltd-up   … 特急 海浜幕張 → 東京
 //   ltd-down … 特急 東京 → 海浜幕張
-//   auto     … 平日の朝〜昼は tokyo、15時以降は back
+//   auto     … 平日の朝〜昼は makuhari、15時以降は back
 const URL_BASE = "https://kumo-works-lab.github.io/keiyo-jikokuhyo/";
 
 const NAMES = { 習: "新習志野", 西: "西船橋", 府: "府中本町", 所: "東所沢", 安: "安房鴨川", 勝: "勝浦", 館: "館山", 一: "上総一ノ宮", 君: "君津", 成: "成東", 誉: "誉田", "一・成": "上総一ノ宮・成東", 幕: "海浜幕張" };
 const HOL = ["2026-11-23", "2027-01-01", "2027-01-11", "2027-02-11", "2027-02-23", "2027-03-21", "2027-03-22", "2027-04-29", "2027-05-03", "2027-05-04", "2027-05-05", "2027-07-19", "2027-08-11", "2027-09-20", "2027-09-23", "2027-10-11", "2027-11-03", "2027-11-23"];
 const NOT_TOKYO = ["習", "西", "府", "所"];
 const ROUTES = {
-  tokyo: { label: "稲毛海岸 → 東京", src: "U", def: "東京", excl: NOT_TOKYO, arr: 1 },
+  tokyo: { label: "稲毛海岸 → 東京", src: "U", def: "東京", excl: NOT_TOKYO, arr: 1, xfer: true },
   makuhari: { label: "稲毛海岸 → 海浜幕張", src: "U", def: "東京", excl: [], arr: 0 },
   back: { label: "海浜幕張 → 稲毛海岸", src: "K", def: "蘇我", excl: [], arr: 0, noPass: true },
   "ltd-up": { label: "特急 海浜幕張 → 東京", src: "M", def: "東京", excl: NOT_TOKYO, arr: 0, ltd: true },
@@ -33,11 +33,56 @@ function dayType(y, m, d) {
 // 運行日(JST)の0時からm分後の Date
 const toDate = (sd, m) => new Date(Date.UTC(sd.y, sd.mo - 1, sd.d) - 9 * 3600e3 + m * 60e3);
 
+// ---- 乗り換え検索（アプリ本体と同じ考え方）----
+const XFER_MIN = 1, MAX_XFER = 2;
+const PLAN = {};
+function planner(data, type) {
+  if (type in PLAN) return PLAN[type];
+  const net = data.net && data.net[type];
+  if (!net) return (PLAN[type] = null);
+  const N = data.net.st.length, TOK = N - 1;
+  const stops = net.map(([k, v]) => {
+    if (!v || k === 2) return [];
+    const o = [];
+    for (let s = 0; s < N; s++) if (v[2 * s] != null) o.push(s);
+    return o.sort((x, y) => v[2 * x] - v[2 * y]);
+  });
+  const A = (j, s) => net[j][1][2 * s], D = (j, s) => net[j][1][2 * s + 1];
+  return (PLAN[type] = i => {
+    if (!net[i] || !net[i][1] || net[i][1][1] == null) return null;
+    const best = new Array(N).fill(Infinity);
+    let cur = new Array(N).fill(null), res = null;
+    for (const s of stops[i]) { if (s === 0) continue; best[s] = A(i, s); cur[s] = { t: A(i, s), legs: [{ j: i, from: 0 }] }; }
+    if (cur[TOK]) res = cur[TOK];
+    for (let k = 1; k <= MAX_XFER; k++) {
+      const nx = new Array(N).fill(null);
+      let any = false;
+      for (let j = 0; j < net.length; j++) {
+        let on = null;
+        for (const s of stops[j]) {
+          if (on) { const a = A(j, s); if (a < best[s]) { best[s] = a; nx[s] = { t: a, legs: [...on.legs, { j, from: on.s }] }; any = true; } }
+          const L = cur[s];
+          if (L && L.legs[L.legs.length - 1].j !== j && D(j, s) >= L.t + XFER_MIN) on = { s, legs: L.legs };
+        }
+      }
+      if (nx[TOK]) res = nx[TOK];
+      if (!any) break;
+      cur = nx;
+    }
+    return res ? { at: res.t, n: res.legs.length - 1, at_st: res.legs.slice(1).map(l => data.net.st[l.from]) } : null;
+  });
+}
+
 function trains(data, rt, type) {
+  const P = rt.xfer ? planner(data, type) : null;
   return (data.tables[rt.src + "_" + type] || [])
-    .map(r => ({ m: r[0], kind: +r[1] || 0, d: r[2], name: r[3], x: r[4], arr: r[6] ? r[6][rt.arr] : null }))
+    .map(r => {
+      const b = P && r[7] != null ? P(r[7]) : null;
+      return { m: r[0], kind: +r[1] || 0, d: r[2], name: r[3], x: r[4], arr: b ? b.at : r[6] ? r[6][rt.arr] : null, xn: b ? b.n : null, xs: b ? b.at_st : [], ok: !P || !!b };
+    })
     .filter(t => {
-      if (t.d && rt.excl.includes(t.d)) return false;
+      if (!t.ok) return false;
+      if (!P && t.d && rt.excl.includes(t.d)) return false;
       if (rt.ltd) return t.kind === 2;
       if (rt.noPass && t.x === "通過") return false;
       return t.kind !== 2;
@@ -62,12 +107,12 @@ function upcoming(data, rt, now, n) {
 }
 
 function pickRoute(param, now) {
-  const key = (param || "tokyo").trim();
+  const key = (param || "makuhari").trim();
   if (key === "auto") {
     const p = jstParts(now);
-    return ROUTES[dayType(p.y, p.mo, p.d) === "wd" && p.h >= 4 && p.h < 15 ? "tokyo" : "back"];
+    return ROUTES[dayType(p.y, p.mo, p.d) === "wd" && p.h >= 4 && p.h < 15 ? "makuhari" : "back"];
   }
-  return ROUTES[key] || ROUTES.tokyo;
+  return ROUTES[key] || ROUTES.makuhari;
 }
 
 // ---------- ここから Scriptable の画面 ----------
@@ -92,6 +137,8 @@ const C = {
 };
 const kindLabel = t => (t.kind === 2 ? "特急" : t.kind === 1 ? "快速" : "各停");
 const kindColor = t => (t.kind === 2 ? C.ltd : t.kind === 1 ? C.rapid : C.sub);
+const xferLabel = t => (t.xn == null ? "" : t.xn ? `・乗換${t.xn}回（${t.xs.join("・")}）` : "・乗換なし");
+const xferShort = t => (t.xn ? ` 乗換${t.xs.join("・")}` : "");
 
 function txt(st, s, font, color, opts = {}) {
   const t = st.addText(s);
@@ -107,7 +154,7 @@ function build(family, rt, list, data) {
 
   // ロック画面（1行）
   if (family === "accessoryInline") {
-    w.addText(first ? `${fmt(first.m)} ${kindLabel(first)}${first.arr != null ? " → " + fmt(first.arr) + "着" : ""}` : "本日の運転は終了");
+    w.addText(first ? `${fmt(first.m)} ${kindLabel(first)}${first.arr != null ? " → " + fmt(first.arr) + "着" : ""}${xferShort(first)}` : "本日の運転は終了");
     return w;
   }
   // ロック画面（長方形）
@@ -119,7 +166,7 @@ function build(family, rt, list, data) {
     r.addSpacer(6);
     const d = r.addDate(first.date); d.applyRelativeStyle(); d.font = Font.semiboldSystemFont(13); d.lineLimit = 1;
     const second = list[1];
-    txt(w, `${kindLabel(first)}${first.arr != null ? " " + fmt(first.arr) + "着" : ""}${second ? "　次 " + fmt(second.m) : ""}`, Font.systemFont(12), Color.white(), { scale: 0.7 });
+    txt(w, `${kindLabel(first)}${first.arr != null ? " " + fmt(first.arr) + "着" : ""}${xferShort(first)}${second ? "　次 " + fmt(second.m) : ""}`, Font.systemFont(12), Color.white(), { scale: 0.7 });
     return w;
   }
 
@@ -149,7 +196,7 @@ function build(family, rt, list, data) {
 
   if (first.arr != null) {
     w.addSpacer(2);
-    txt(w, `→ ${fmt(first.arr)} 着（${first.arr - first.m}分）`, Font.semiboldSystemFont(13), C.text, { scale: 0.7 });
+    txt(w, `→ ${fmt(first.arr)} 着（${first.arr - first.m}分）${xferLabel(first)}`, Font.semiboldSystemFont(13), C.text, { scale: 0.7 });
   }
   w.addSpacer();
 
@@ -159,7 +206,7 @@ function build(family, rt, list, data) {
     txt(r, fmt(t.m), Font.semiboldMonospacedSystemFont(14), C.text);
     r.addSpacer(6);
     txt(r, kindLabel(t), Font.boldSystemFont(11), kindColor(t));
-    if (t.arr != null) { r.addSpacer(6); txt(r, `→ ${fmt(t.arr)}着`, Font.systemFont(12), C.sub, { scale: 0.7 }); }
+    if (t.arr != null) { r.addSpacer(6); txt(r, `→ ${fmt(t.arr)}着${xferShort(t)}`, Font.systemFont(12), C.sub, { scale: 0.7 }); }
     if (family !== "systemSmall" && t.d) { r.addSpacer(6); txt(r, (NAMES[t.d] || t.d) + "行", Font.systemFont(11), C.sub, { scale: 0.7 }); }
     r.addSpacer();
   }

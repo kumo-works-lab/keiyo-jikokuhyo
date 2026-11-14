@@ -11,7 +11,11 @@ const PAGES = {
   M_hd: "tt0413/0413021", // 海浜幕張 上り 土休日
   T_wd: "tt1039/1039070", // 東京 京葉線 下り 平日
   T_hd: "tt1039/1039071", // 東京 京葉線 下り 土休日
+  S_wd: "tt0859/0859020", // 新木場 上り 平日（東京へ行く列車を全部集める。乗り換え計算用）
+  S_hd: "tt0859/0859021", // 新木場 上り 土休日
 };
+// 乗り換え計算で時刻を調べる駅（東京方面の順）
+export const NET_ST = ["稲毛海岸", "検見川浜", "海浜幕張", "幕張豊砂", "新習志野", "南船橋", "西船橋", "二俣新町", "市川塩浜", "新浦安", "舞浜", "葛西臨海公園", "新木場", "潮見", "越中島", "八丁堀", "東京"];
 const BASE = "https://timetables.jreast.co.jp";
 
 // 版(YYMM)の候補: 来月から12か月前まで、新しい順
@@ -118,6 +122,28 @@ export function parseTrain(html, stations) {
   });
 }
 
+// 列車ページから、各駅の [着, 発] を並べて返す（着だけ・発だけの駅は同じ値を入れる。止まらない駅は null）
+export function parseTrainFull(html, stations) {
+  const txt = html
+    .replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;|\u3000/g, " ")
+    .replace(/\s+/g, " ");
+  const toM = (h, m) => (+h < 4 ? +h + 24 : +h) * 60 + +m;
+  const out = [];
+  for (const st of stations) {
+    const re = new RegExp(`(?:^| )${st} (?:[•・] ?)?(\\d{1,2}):(\\d{2}) ?(着|発)(?: (?:[•・] ?)?(\\d{1,2}):(\\d{2}) ?(着|発))?`);
+    const m = txt.match(re);
+    if (!m) { out.push(null, null); continue; }
+    const t1 = toM(m[1], m[2]), t2 = m[4] ? toM(m[4], m[5]) : null;
+    let a = null, d = null;
+    if (m[3] === "着") a = t1; else d = t1;
+    if (t2 != null) { if (m[6] === "着") a = t2; else d = t2; }
+    out.push(a ?? d, d ?? a);
+  }
+  return out;
+}
+
 // どの表の列車について、どの駅の時刻を調べるか
 const ARR = {
   U: { st: ["海浜幕張", "東京"], all: true },
@@ -127,6 +153,44 @@ const ARR = {
 };
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
+// 稲毛海岸発（U）と新木場上り（S）の列車について全駅の時刻を集め、乗り換え計算用の net を作る
+async function buildNet(tables, versions, links) {
+  let cache = {};
+  try { cache = JSON.parse(fs.readFileSync("net-cache.json", "utf8")); } catch {}
+  const net = {}, keep = {};
+  let fails = 0;
+  for (const d of ["wd", "hd"]) {
+    const idx = new Map(), list = [];
+    const want = [];
+    for (const k of [`U_${d}`, `S_${d}`]) {
+      tables[k].forEach((r, i) => {
+        const link = links[k][i];
+        if (!link || r[1] === 2) return;
+        const url = `${versions[k]}/${link}`;
+        if (!idx.has(url)) { idx.set(url, list.length); list.push(url); want.push(r[1]); }
+        if (k[0] === "U") r[7] = idx.get(url);
+      });
+    }
+    const todo = list.filter(u => !(u in cache));
+    console.log(`net ${d}: ${list.length}本中 ${todo.length}本を新しく取得`);
+    const queue = [...todo];
+    async function worker() {
+      while (queue.length) {
+        const url = queue.shift();
+        const r = await fetch(`${BASE}/${url}.html`, { headers: { "User-Agent": "Mozilla/5.0 (personal timetable app; 1 fetch/day)" } }).catch(() => null);
+        const html = r && r.ok ? await r.text() : null;
+        const v = html ? parseTrainFull(html, NET_ST) : null;
+        if (v && v.some(x => x != null)) cache[url] = v; else fails++;
+        await sleep(150);
+      }
+    }
+    await Promise.all([worker(), worker(), worker()]);
+    net[d] = list.map((u, i) => { if (cache[u]) keep[u] = cache[u]; return [want[i], cache[u] || null]; });
+  }
+  fs.writeFileSync("net-cache.json", JSON.stringify(keep));
+  return { net, fails };
+}
+
 async function fillArrivals(tables, versions) {
   let cache = {};
   try { cache = JSON.parse(fs.readFileSync("arrivals.json", "utf8")); } catch {}
@@ -134,6 +198,7 @@ async function fillArrivals(tables, versions) {
   const jobs = [];
   for (const [k, rows] of Object.entries(tables)) {
     const cfg = ARR[k[0]];
+    if (!cfg) { for (const r of rows) r[6] = null; continue; }
     for (const r of rows) {
       const link = r[6];
       r[6] = null;
@@ -186,10 +251,13 @@ async function main() {
     if (before && Math.abs(rows.length - before) > before * 0.3) errors.push(`${k}: 本数が大きく変化 (${before}→${rows.length})`);
     if (/^[UK]_wd$/.test(k) && !rows.some(r => r[1] === 1)) errors.push(`${k}: 快速が1本も読み取れない`);
     if (/^[MT]_/.test(k) && !rows.some(r => r[1] === 2)) errors.push(`${k}: 特急が1本も読み取れない`);
+    if (/^S_wd$/.test(k) && !rows.some(r => r[1] === 1)) errors.push(`${k}: 快速が1本も読み取れない`);
     tables[k] = rows;
     versions[k] = v;
     console.log(k, v, rows.length, "本 / 快速", rows.filter(r => r[1] === 1).length, "/ 特急", rows.filter(r => r[1] === 2).length);
   }
+  // 列車ページへのリンクは fillArrivals が消すので先に控える
+  const links = Object.fromEntries(Object.entries(tables).map(([k, rows]) => [k, rows.map(r => r[6])]));
   const { cache, fails } = await fillArrivals(tables, versions);
   console.log("列車ページの取得失敗:", fails);
   for (const d of ["wd", "hd"]) {
@@ -207,14 +275,25 @@ async function main() {
     console.error(errors.join("\n"));
     process.exit(1);
   }
+  // 乗り換え計算用。読めなくてもアプリは乗り換えなしの表示に戻るだけなので、失敗しても止めない
+  let net = null;
+  try {
+    const r = await buildNet(tables, versions, links);
+    console.log("net の取得失敗:", r.fails);
+    const ok = r.net.wd.filter(x => x[1] && x[1][NET_ST.length * 2 - 1] != null).length;
+    if (ok >= r.net.wd.length * 0.7) net = { st: NET_ST, ...r.net };
+    else console.log(`警告: 東京の時刻が読めた列車が少ないので net は更新しない (${ok}/${r.net.wd.length})`);
+  } catch (e) { console.log("警告: net を作れませんでした", e); }
+  if (!net) for (const k in tables) if (k[0] === "U") for (const r of tables[k]) r.length = Math.min(r.length, 7);
+  delete tables.S_wd; delete tables.S_hd;
   fs.writeFileSync("arrivals.json", JSON.stringify(cache));
-  if (JSON.stringify(tables) === JSON.stringify(old.tables)) {
+  if (JSON.stringify(tables) === JSON.stringify(old.tables) && JSON.stringify(net) === JSON.stringify(old.net || null)) {
     console.log("変更なし");
     return;
   }
   const today = new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 10);
-  const diff = Object.keys(tables).map(k => `${k}: ${old.tables[k]?.length ?? 0}→${tables[k].length}本 (版${versions[k]})`).join("\n");
-  fs.writeFileSync("data.json", JSON.stringify({ updated: today, note: "", versions, tables }));
+  const diff = Object.keys(tables).filter(k => k[0] !== "S").map(k => `${k}: ${old.tables[k]?.length ?? 0}→${tables[k].length}本 (版${versions[k]})`).join("\n");
+  fs.writeFileSync("data.json", JSON.stringify({ updated: today, note: "", versions, tables, net }));
   fs.writeFileSync("CHANGES.txt", diff + "\n");
   console.log("更新しました\n" + diff);
 }

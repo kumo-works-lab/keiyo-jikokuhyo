@@ -72,6 +72,8 @@ h1{font-size:34px;line-height:1.15;font-weight:800;letter-spacing:-.02em;margin:
 .badge.x{background:var(--ltd);color:#fff}
 .note{font-size:12px;color:var(--rapid);font-weight:600}
 .hero .arr{margin-top:10px;font-size:17px;font-weight:700;font-variant-numeric:tabular-nums}
+.hero .xf{margin-top:4px;font-size:14px;color:var(--sub);font-weight:600}
+.hero .xf b{color:var(--blue)}
 
 .row{display:flex;align-items:center;gap:10px;min-height:52px;padding:8px 0;border-bottom:.5px solid var(--sep)}
 .row:last-child{border-bottom:0}
@@ -141,8 +143,8 @@ const ICON={
 const NOT_TOKYO=["習","西","府","所"];
 const GROUPS=[
  {id:"go",label:"行き",icon:"go",routes:[
-  {seg:"東京",title:"東京方面",from:"稲毛海岸 発",src:"U",def:"東京",excl:NOT_TOKYO,arr:1,at:"東京"},
-  {seg:"海浜幕張",title:"海浜幕張方面",from:"稲毛海岸 発",src:"U",def:"東京",excl:[],arr:0,at:"海浜幕張"}
+  {seg:"海浜幕張",title:"海浜幕張方面",from:"稲毛海岸 発",src:"U",def:"東京",excl:[],arr:0,at:"海浜幕張"},
+  {seg:"東京",title:"東京方面",from:"稲毛海岸 発",src:"U",def:"東京",excl:NOT_TOKYO,arr:1,at:"東京",xfer:true}
  ]},
  {id:"home",label:"帰り",icon:"home",routes:[
   {title:"稲毛海岸へ",from:"海浜幕張 発",src:"K",def:"蘇我",excl:[],noPass:true,arr:0,at:"稲毛海岸"}
@@ -153,8 +155,9 @@ const GROUPS=[
  ]}
 ];
 const st={g:0,r:[0,0,0],k:false,day:"auto"};
-try{Object.assign(st,JSON.parse(localStorage.getItem("keiyo-st")||"{}"),{day:"auto"})}catch(e){}
-const save=()=>{try{localStorage.setItem("keiyo-st",JSON.stringify({g:st.g,r:st.r,k:st.k}))}catch(e){}};
+// v2: 行きの並びを「海浜幕張・東京」に変えたので、前の形式の保存値は使わない
+try{const o=JSON.parse(localStorage.getItem("keiyo-st2")||"{}");Object.assign(st,o,{day:"auto"})}catch(e){}
+const save=()=>{try{localStorage.setItem("keiyo-st2",JSON.stringify({g:st.g,r:st.r,k:st.k}))}catch(e){}};
 
 const pad=n=>String(n).padStart(2,"0");
 function jst(){const p=new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Tokyo",year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",second:"2-digit",hourCycle:"h23"}).formatToParts(new Date()).reduce((a,x)=>(a[x.type]=x.value,a),{});return{y:+p.year,mo:+p.month,d:+p.day,h:+p.hour,mi:+p.minute,s:+p.second}}
@@ -166,11 +169,52 @@ const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",
 
 let DATA=null;
 // 古い形式（[分, 快速0/1, 行き先]）にも対応
-const rows=(src,type)=>(DATA.tables[src+"_"+type]||[]).map(r=>({m:r[0],kind:r[1]===true?1:+r[1]||0,d:r[2]??null,name:r[3]??null,x:r[4]??null,c:!!r[5],arr:r[6]||null}));
+const rows=(src,type)=>(DATA.tables[src+"_"+type]||[]).map(r=>({m:r[0],kind:r[1]===true?1:+r[1]||0,d:r[2]??null,name:r[3]??null,x:r[4]??null,c:!!r[5],arr:r[6]||null,ni:r[7]??null}));
 const route=()=>GROUPS[st.g].routes[st.r[st.g]]||GROUPS[st.g].routes[0];
+// ---- 乗り換え検索 ----
+// net[type] = [[種別, [駅0着,駅0発,駅1着,駅1発,...]], ...]（駅は net.st の順、東京が最後）
+const XFER_MIN=1; // 乗り換えに最低この分数
+const MAX_XFER=2;
+const PLAN={};
+function plans(type){
+ if(PLAN[type])return PLAN[type];
+ const net=DATA.net&&DATA.net[type];
+ if(!net)return PLAN[type]=null;
+ const N=DATA.net.st.length,TOK=N-1;
+ // 各列車の停車駅を時刻順に並べておく
+ const stops=net.map(([k,v])=>{if(!v||k===2)return[];const o=[];for(let s=0;s<N;s++)if(v[2*s]!=null)o.push(s);return o.sort((x,y)=>v[2*x]-v[2*y])});
+ const A=(j,s)=>net[j][1][2*s],D=(j,s)=>net[j][1][2*s+1];
+ return PLAN[type]=i=>{
+  if(!net[i]||!net[i][1]||net[i][1][1]==null)return null;
+  const best=new Array(N).fill(Infinity);
+  let cur=new Array(N).fill(null),res=null;
+  const dep0=D(i,0);
+  for(const s of stops[i]){if(s===0)continue;const a=A(i,s);best[s]=a;cur[s]={t:a,legs:[{j:i,from:0,dep:dep0,to:s,arr:a}]}}
+  if(cur[TOK])res=cur[TOK];
+  for(let k=1;k<=MAX_XFER;k++){
+   const nx=new Array(N).fill(null);let any=false;
+   for(let j=0;j<net.length;j++){
+    let on=null;
+    for(const s of stops[j]){
+     if(on){const a=A(j,s);if(a<best[s]){best[s]=a;nx[s]={t:a,legs:[...on.legs,{j,from:on.s,dep:on.d,to:s,arr:a}]};any=true}}
+     const L=cur[s];
+     // できるだけ長く今の列車に乗り、最後に間に合う駅で乗り換える
+     if(L&&L.legs[L.legs.length-1].j!==j&&D(j,s)>=L.t+XFER_MIN)on={s,d:D(j,s),legs:L.legs};
+    }
+   }
+   if(nx[TOK])res=nx[TOK];
+   if(!any)break;
+   cur=nx;
+  }
+  if(!res)return null;
+  return{at:res.t,n:res.legs.length-1,legs:res.legs.map(l=>({...l,kind:net[l.j][0]}))};
+ };
+}
 function list(rt,type){
+ const P=rt.xfer&&DATA.net?plans(type):null;
  return rows(rt.src,type).filter(t=>{
-  if(t.d&&rt.excl.includes(t.d))return false;
+  if(P){t.best=t.ni!=null?P(t.ni):null;if(!t.best)return false}
+  else if(t.d&&rt.excl.includes(t.d))return false;
   if(rt.ltd)return t.kind===2;
   if(rt.noPass&&t.x==="通過")return false;
   if(t.kind===2)return false;
@@ -179,9 +223,17 @@ function list(rt,type){
 }
 function badge(t,short){return t.kind===2?`<span class="badge x">特急${t.name&&!short?" "+esc(t.name):""}</span>`:t.kind===1?'<span class="badge k">快速</span>':'<span class="badge n">各停</span>'}
 function destText(t,rt){return (t.d?(NAMES[t.d]||t.d):rt.def)+" 行"}
-const arrOf=(t,rt)=>t.arr&&t.arr[rt.arr]!=null?t.arr[rt.arr]:null;
+const arrOf=(t,rt)=>t.best?t.best.at:t.arr&&t.arr[rt.arr]!=null?t.arr[rt.arr]:null;
+const stName=s=>DATA.net.st[s];
+const kindName=k=>k===1?"快速":"各停";
+const xferText=t=>!t.best?"":t.best.n?`乗換${t.best.n}回（${t.best.legs.slice(1).map(l=>stName(l.from)).join("・")}）`:"乗換なし";
 function arrText(t,rt){const a=arrOf(t,rt);return a==null?"":`${rt.at} ${fmt(a)} 着（${a-t.m}分）`}
-function subText(t,rt,withName){const a=[];const ar=withName?arrOf(t,rt):null;if(ar!=null)a.push(`${fmt(ar)} 着`);if(withName&&t.kind===2&&t.name)a.push(esc(t.name));if(t.c)a.push("運転日注意");return a.join("・")}
+function xferLine(t){
+ if(!t.best)return"";const b=t.best;
+ if(!b.n)return`<div class="xf"><b>乗換なし</b>・そのまま東京へ</div>`;
+ const steps=b.legs.slice(1).map((l,n)=>`${stName(l.from)} ${fmt(b.legs[n].arr)} 着 → ${fmt(l.dep)} 発の${kindName(l.kind)}へ`);
+ return`<div class="xf"><b>乗換${b.n}回</b>・${steps.join("<br>")}</div>`}
+function subText(t,rt,withName){const a=[];const ar=withName?arrOf(t,rt):null;if(ar!=null)a.push(`${fmt(ar)} 着`);if(withName&&t.best)a.push(xferText(t));if(withName&&t.kind===2&&t.name)a.push(esc(t.name));if(t.c)a.push("運転日注意");return a.join("・")}
 function untilText(t,now){const d=Math.floor(t.m-now+1e-4);return d<=0?"まもなく":d<60?`${d}分`:`${Math.floor(d/60)}時間${d%60?d%60+"分":""}`}
 function rowHTML(t,rt,now){const s=subText(t,rt,true);return `<div class="row"><span class="t">${fmt(t.m)}</span><span class="d">${destText(t,rt)}${s?`<small>${s}</small>`:""}</span>${rt.ltd?"":badge(t,true)}${now!=null?`<span class="m">${untilText(t,now)}</span>`:""}</div>`}
 
@@ -219,7 +271,7 @@ function render(){
   h=`<div class="hero glass"><div class="empty"><b>${rt.ltd?"本日の特急は終了":"本日の運転は終了"}</b>${f?`明日の${rt.ltd?"最初の特急":"始発"} ${fmt(f.m)}`:""}</div></div>`;
  }else{
   const [a,...more]=up,next=more.slice(0,2),d=Math.floor(a.m-now+1e-4),s=subText(a,rt);
-  h=`<div class="hero glass"><div class="hero-main"><div><div class="t">${fmt(a.m)}</div><div class="meta">${badge(a)}<span>${destText(a,rt)}</span>${s?`<span class="note">${s}</span>`:""}</div>${arrText(a,rt)?`<div class="arr">→ ${arrText(a,rt)}</div>`:""}</div>
+  h=`<div class="hero glass"><div class="hero-main"><div><div class="t">${fmt(a.m)}</div><div class="meta">${badge(a)}<span>${destText(a,rt)}</span>${s?`<span class="note">${s}</span>`:""}</div>${arrText(a,rt)?`<div class="arr">→ ${arrText(a,rt)}</div>`:""}${xferLine(a)}</div>
    <div class="cd"><small>${d<=0?"":"あと"}</small><b class="${d<=2?"soon":d>=60?"long":""}">${untilText(a,now)}</b></div></div>
    ${next.length?`<div class="rows">${next.map(t=>rowHTML(t,rt,now)).join("")}</div>`:""}</div>`;
   const rest=up.slice(3);

@@ -26,7 +26,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          git add -A data.json raw arrivals.json
+          git add -A data.json raw arrivals.json net-cache.json
           if git diff --cached --quiet; then
             echo "変更なし"
             exit 0
