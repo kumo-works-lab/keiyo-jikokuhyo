@@ -1,0 +1,40 @@
+name: 時刻表の更新
+
+on:
+  schedule:
+    - cron: "17 19 * * *" # 毎日 4:17 (日本時間)
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ["scripts/**", ".github/workflows/**"]
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: 取得
+        run: node scripts/fetch.mjs
+      - name: 変更があれば保存して通知
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git add -A data.json raw
+          if git diff --cached --quiet; then
+            echo "変更なし"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
+          git commit -m "時刻表を更新 $(date -u +%F)"
+          git push
+          if [ -f CHANGES.txt ] && git diff HEAD~1 --quiet -- data.json; then :; elif [ -f CHANGES.txt ]; then
+            gh issue create --title "時刻表が更新されました $(TZ=Asia/Tokyo date +%F)" --body-file CHANGES.txt || true
+          fi

@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="京葉線">
+<title>稲毛海岸 京葉線 時刻表</title>
+<style>
+:root{--bg:#f4f5f7;--card:#fff;--text:#16181d;--sub:#6b7280;--line:#e5e7eb;--accent:#c8102e;--rapid:#d9480f;--rapidbg:#fff0e6;--local:#4b5563;--localbg:#eceef2}
+@media(prefers-color-scheme:dark){:root{--bg:#0f1115;--card:#1a1d24;--text:#f1f3f6;--sub:#9aa3b2;--line:#2a2f3a;--accent:#ff5a6e;--rapid:#ffa26b;--rapidbg:#3a2417;--local:#c3c9d4;--localbg:#2a2f3a}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,"Hiragino Sans",sans-serif;padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
+.wrap{max-width:520px;margin:0 auto;padding:12px 14px 40px}
+h1{font-size:15px;margin:6px 2px 10px;color:var(--sub);font-weight:600}
+.tabs{display:flex;gap:6px;margin-bottom:12px}
+.tab{flex:1;border:1px solid var(--line);background:var(--card);color:var(--text);border-radius:10px;padding:9px 4px;font-size:13px;line-height:1.3;font-weight:600}
+.tab[aria-selected=true]{background:var(--accent);border-color:var(--accent);color:#fff}
+.bar{display:flex;justify-content:space-between;align-items:center;gap:8px;margin:0 2px 10px;font-size:13px;color:var(--sub)}
+.chip{border:1px solid var(--line);background:var(--card);color:var(--text);border-radius:999px;padding:6px 12px;font-size:13px}
+.chip[aria-pressed=true]{background:var(--rapid);border-color:var(--rapid);color:#fff}
+.next{background:var(--card);border-radius:14px;padding:6px 14px;margin-bottom:14px;border:1px solid var(--line)}
+.row{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--line)}
+.row:last-child{border-bottom:0}
+.time{font-variant-numeric:tabular-nums;font-weight:700;min-width:4.2ch}
+.first .time{font-size:34px}.first .mins{font-size:16px;color:var(--accent);font-weight:700}
+.sub .time{font-size:20px}.sub .mins{font-size:13px;color:var(--sub)}
+.mins{margin-left:auto;text-align:right}
+.dest{font-size:13px;color:var(--sub)}
+.badge{font-size:12px;font-weight:700;padding:2px 8px;border-radius:6px;white-space:nowrap}
+.badge.k{background:var(--rapidbg);color:var(--rapid)}
+.badge.n{background:var(--localbg);color:var(--local)}
+.list{background:var(--card);border-radius:14px;border:1px solid var(--line);padding:2px 14px}
+.list .row{padding:8px 0}.list .time{font-size:17px}
+.empty{padding:18px 4px;color:var(--sub);font-size:14px}
+.foot{margin:16px 2px 0;font-size:12px;color:var(--sub);line-height:1.7}
+.foot a{color:var(--accent)}
+.hdr{font-size:12px;color:var(--sub);margin:0 2px 6px}
+</style>
+</head>
+<body>
+<div class="wrap">
+<h1 id="clock"></h1>
+<div class="tabs" role="tablist" id="tabs"></div>
+<div class="bar"><button class="chip" id="daybtn"></button><button class="chip" id="kbtn" aria-pressed="false">快速のみ</button></div>
+<div id="out"></div>
+<div class="foot">
+<a href="https://traininfo.jreast.co.jp/train_info/chiba.aspx" target="_blank" rel="noopener">JR東日本 運行情報（遅延・運休はこちら）</a><br>
+表示は時刻表どおりの時刻で、遅延は反映されません。<br>
+出典: JR東日本 駅時刻表（稲毛海岸・海浜幕張）。毎日自動で確認しています。特急は除外。臨時ダイヤには未対応です。<br><span id="meta"></span>
+</div>
+</div>
+<script>
+const NAMES={習:"新習志野",西:"西船橋",府:"府中本町",所:"東所沢",安:"安房鴨川",勝:"勝浦",館:"館山",一:"上総一ノ宮",君:"君津",成:"成東",誉:"誉田","一・成":"上総一ノ宮・成東"};
+const HOL=["2026-11-23","2027-01-01","2027-01-11","2027-02-11","2027-02-23","2027-03-21","2027-03-22","2027-04-29","2027-05-03","2027-05-04","2027-05-05","2027-07-19","2027-08-11","2027-09-20","2027-09-23","2027-10-11","2027-11-03","2027-11-23"];
+const TABS=[
+ {id:"tokyo",label:"稲毛海岸<br>→東京",src:"U",def:"東京",excl:["習","西"]},
+ {id:"makuhari",label:"稲毛海岸<br>→海浜幕張",src:"U",def:"東京",excl:[]},
+ {id:"back",label:"海浜幕張<br>→稲毛海岸",src:"K",def:"蘇我",excl:[]}
+];
+const st={tab:0,k:false,day:"auto"};
+const pad=n=>String(n).padStart(2,"0");
+function jst(){const p=new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Tokyo",year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",second:"2-digit",hourCycle:"h23"}).formatToParts(new Date()).reduce((a,x)=>(a[x.type]=x.value,a),{});return{y:+p.year,mo:+p.month,d:+p.day,h:+p.hour,mi:+p.minute,s:+p.second}}
+function ymd(y,m,d){return y+"-"+pad(m)+"-"+pad(d)}
+function addDay(y,m,d,n){const t=new Date(Date.UTC(y,m-1,d+n));return{y:t.getUTCFullYear(),mo:t.getUTCMonth()+1,d:t.getUTCDate()}}
+function dayType(y,m,d){const dow=new Date(Date.UTC(y,m-1,d)).getUTCDay();return(dow===0||dow===6||HOL.includes(ymd(y,m,d)))?"hd":"wd"}
+let DATA=null;
+function build(src,type){return (DATA.tables[src+"_"+type]||[]).map(r=>({m:r[0],k:!!r[1],d:r[2]}))}
+function fmt(m){const h=Math.floor(m/60)%24;return h+":"+pad(m%60)}
+function row(t,tab,cls,mins){const dn=t.d?(NAMES[t.d]||t.d):tab.def;const ex=t.d?" 行":"";return `<div class="row ${cls}"><span class="time">${fmt(t.m)}</span><span class="badge ${t.k?"k":"n"}">${t.k?"快速":"各停"}</span><span class="dest">${dn}${ex}</span>${mins!=null?`<span class="mins">${mins}</span>`:""}</div>`}
+function render(){
+ if(!DATA)return;
+ const n=jst();let sd={y:n.y,mo:n.mo,d:n.d},nowM=n.h*60+n.mi+n.s/60;
+ if(n.h<4){sd=addDay(n.y,n.mo,n.d,-1);nowM+=1440}
+ const auto=dayType(sd.y,sd.mo,sd.d),type=st.day==="auto"?auto:st.day;
+ document.getElementById("clock").textContent=`${n.mo}/${n.d} ${n.h}:${pad(n.mi)} 現在`;
+ document.getElementById("daybtn").textContent=(type==="wd"?"平日ダイヤ":"土休日ダイヤ")+(st.day==="auto"?"（自動）":"（手動）");
+ const tab=TABS[st.tab];
+ const filt=a=>a.filter(t=>!(t.d&&tab.excl.includes(t.d))&&(!st.k||t.k));
+ const all=filt(build(tab.src,type));
+ const up=all.filter(t=>t.m>=Math.floor(nowM));
+ let h="";
+ if(!up.length){
+  const nx=addDay(sd.y,sd.mo,sd.d,1),nt=st.day==="auto"?dayType(nx.y,nx.mo,nx.d):type;
+  const f=filt(build(tab.src,nt))[0];
+  h=`<div class="next"><div class="empty">本日の運転は終了しました${f?`<br>明日の始発: ${fmt(f.m)}`:""}</div></div>`;
+ }else{
+  const top=up.slice(0,3);
+  h=`<div class="next">`+top.map((t,i)=>{const diff=Math.floor(t.m-nowM+0.0001);const lab=diff<=0?"まもなく":`あと${diff}分`;return row(t,tab,i?"sub":"first",lab)}).join("")+`</div>`;
+  const rest=up.slice(3);
+  if(rest.length)h+=`<div class="hdr">この後の発車</div><div class="list">`+rest.map(t=>row(t,tab,"",null)).join("")+`</div>`;
+ }
+ document.getElementById("out").innerHTML=h;
+}
+const tabsEl=document.getElementById("tabs");
+TABS.forEach((t,i)=>{const b=document.createElement("button");b.className="tab";b.setAttribute("role","tab");b.innerHTML=t.label;b.onclick=()=>{st.tab=i;sync();render()};tabsEl.appendChild(b)});
+function sync(){[...tabsEl.children].forEach((b,i)=>b.setAttribute("aria-selected",i===st.tab));document.getElementById("kbtn").setAttribute("aria-pressed",st.k)}
+document.getElementById("kbtn").onclick=()=>{st.k=!st.k;sync();render()};
+document.getElementById("daybtn").onclick=()=>{st.day=st.day==="auto"?"wd":st.day==="wd"?"hd":"auto";render()};
+sync();
+fetch("data.json?"+Date.now()).then(r=>r.json()).then(d=>{DATA=d;const v=d.versions||{};document.getElementById("meta").textContent=`データ更新日: ${d.updated}（版 平日${v.U_wd}/土休日${v.U_hd}）${d.note?"・"+d.note:""}`;render()}).catch(()=>{document.getElementById("out").innerHTML='<div class="next"><div class="empty">データを読み込めませんでした</div></div>'});
+setInterval(render,5000);
+</script>
+</body>
+</html>
