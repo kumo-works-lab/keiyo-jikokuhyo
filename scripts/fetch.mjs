@@ -122,7 +122,7 @@ export function parseTrain(html, stations) {
 const ARR = {
   U: { st: ["海浜幕張", "東京"], all: true },
   K: { st: ["稲毛海岸"], all: true },
-  M: { st: ["東京"], all: false },
+  M: { st: ["東京"], all: true }, // 海浜幕張で乗り換えたときの東京着を出すため全列車
   T: { st: ["海浜幕張"], all: false },
 };
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -154,7 +154,8 @@ async function fillArrivals(tables, versions) {
       const r = await fetch(`${BASE}/${url}.html`, { headers: { "User-Agent": "Mozilla/5.0 (personal timetable app; 1 fetch/day)" } }).catch(() => null);
       const html = r && r.ok ? await r.text() : null;
       const v = html ? parseTrain(html, st.split(",")) : null;
-      if (v && v.some(x => x != null)) cache[key] = v;
+      // 東京まで行かない列車などは null のまま覚えておく（毎日取り直さない）
+      if (v && (v.some(x => x != null) || /海浜幕張/.test(html))) cache[key] = v;
       else { fails++; if (!firstFail) firstFail = { url, text: html?.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").slice(0, 1500) }; }
       await sleep(150);
     }
@@ -202,6 +203,10 @@ async function main() {
     if (uTokyo < u.length * 0.7) errors.push(`U_${d}: 東京の着時刻が読めた列車が少ない (${uTokyo}/${u.length})`);
     const kk = tables[`K_${d}`].filter(r => r[1] !== 2), kOk = kk.filter(r => r[6] && r[6][0] != null).length;
     if (kOk < kk.length * 0.9) errors.push(`K_${d}: 稲毛海岸の着時刻が読めた列車が少ない (${kOk}/${kk.length})`);
+    // 乗り換え表示用。読めなくてもアプリは乗り換えなしの表示に戻るだけなので警告にとどめる
+    const mm = tables[`M_${d}`].filter(r => r[1] !== 2 && !["習", "西", "府", "所"].includes(r[2]));
+    const mOk = mm.filter(r => r[6] && r[6][0] != null).length;
+    if (mOk < mm.length * 0.7) console.log(`警告 M_${d}: 東京の着時刻が読めた列車が少ない (${mOk}/${mm.length})`);
   }
   if (errors.length) {
     console.error(errors.join("\n"));

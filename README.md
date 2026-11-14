@@ -1,9 +1,10 @@
 # 京葉線 時刻表（稲毛海岸）
 
-- 稲毛海岸→東京 / 稲毛海岸→海浜幕張 / 海浜幕張→稲毛海岸 の次の発車を表示
+- 稲毛海岸→海浜幕張（行きの既定）/ 稲毛海岸→東京 / 海浜幕張→稲毛海岸 の次の発車を表示
+- 東京方面は、海浜幕張で乗り換えた方が早く着く列車を「乗換1回」、そのままが早ければ「乗換なし」と表示（新習志野・西船橋行きも乗り換え前提で出す）
 - 特急タブ: 海浜幕張→東京、東京→海浜幕張（海浜幕張に停まるわかしお等だけ）
 - GitHub Actions が毎日 4:17 にJR東日本の駅時刻表を確認し、変わっていれば `data.json` を更新して Issue で通知
 - 取得に失敗した日は古いデータのまま（Actions の失敗メールが届く）
 
 ## ウィジェット（iPhone）
-`widget/keiyo-widget.js` を Scriptable アプリに貼り付けて使う。ウィジェットの Parameter で区間を選ぶ（tokyo / makuhari / back / ltd-up / ltd-down / auto）。
+`widget/keiyo-widget.js` を Scriptable アプリに貼り付けて使う。ウィジェットの Parameter で区間を選ぶ（makuhari / tokyo / back / ltd-up / ltd-down / auto。空なら makuhari）。
