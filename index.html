@@ -71,6 +71,7 @@ h1{font-size:34px;line-height:1.15;font-weight:800;letter-spacing:-.02em;margin:
 .badge.k{background:rgba(255,122,0,.15);color:var(--rapid)}
 .badge.x{background:var(--ltd);color:#fff}
 .note{font-size:12px;color:var(--rapid);font-weight:600}
+.hero .arr{margin-top:10px;font-size:17px;font-weight:700;font-variant-numeric:tabular-nums}
 
 .row{display:flex;align-items:center;gap:10px;min-height:52px;padding:8px 0;border-bottom:.5px solid var(--sep)}
 .row:last-child{border-bottom:0}
@@ -140,15 +141,15 @@ const ICON={
 const NOT_TOKYO=["習","西","府","所"];
 const GROUPS=[
  {id:"go",label:"行き",icon:"go",routes:[
-  {seg:"東京",title:"東京方面",from:"稲毛海岸 発",src:"U",def:"東京",excl:NOT_TOKYO},
-  {seg:"海浜幕張",title:"海浜幕張方面",from:"稲毛海岸 発",src:"U",def:"東京",excl:[]}
+  {seg:"東京",title:"東京方面",from:"稲毛海岸 発",src:"U",def:"東京",excl:NOT_TOKYO,arr:1,at:"東京"},
+  {seg:"海浜幕張",title:"海浜幕張方面",from:"稲毛海岸 発",src:"U",def:"東京",excl:[],arr:0,at:"海浜幕張"}
  ]},
  {id:"home",label:"帰り",icon:"home",routes:[
-  {title:"稲毛海岸へ",from:"海浜幕張 発",src:"K",def:"蘇我",excl:[],noPass:true}
+  {title:"稲毛海岸へ",from:"海浜幕張 発",src:"K",def:"蘇我",excl:[],noPass:true,arr:0,at:"稲毛海岸"}
  ]},
  {id:"ltd",label:"特急",icon:"ltd",routes:[
-  {seg:"海浜幕張 → 東京",title:"特急で東京へ",from:"海浜幕張 発",src:"M",def:"東京",excl:NOT_TOKYO,ltd:true},
-  {seg:"東京 → 海浜幕張",title:"特急で海浜幕張へ",from:"東京 発",src:"T",def:"蘇我",excl:[],ltd:true,sub:"海浜幕張"}
+  {seg:"海浜幕張 → 東京",title:"特急で東京へ",from:"海浜幕張 発",src:"M",def:"東京",excl:NOT_TOKYO,ltd:true,arr:0,at:"東京"},
+  {seg:"東京 → 海浜幕張",title:"特急で海浜幕張へ",from:"東京 発",src:"T",def:"蘇我",excl:[],ltd:true,arr:0,at:"海浜幕張"}
  ]}
 ];
 const st={g:0,r:[0,0,0],k:false,day:"auto"};
@@ -165,7 +166,7 @@ const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",
 
 let DATA=null;
 // 古い形式（[分, 快速0/1, 行き先]）にも対応
-const rows=(src,type)=>(DATA.tables[src+"_"+type]||[]).map(r=>({m:r[0],kind:r[1]===true?1:+r[1]||0,d:r[2]??null,name:r[3]??null,x:r[4]??null,c:!!r[5]}));
+const rows=(src,type)=>(DATA.tables[src+"_"+type]||[]).map(r=>({m:r[0],kind:r[1]===true?1:+r[1]||0,d:r[2]??null,name:r[3]??null,x:r[4]??null,c:!!r[5],arr:r[6]||null}));
 const route=()=>GROUPS[st.g].routes[st.r[st.g]]||GROUPS[st.g].routes[0];
 function list(rt,type){
  return rows(rt.src,type).filter(t=>{
@@ -178,7 +179,9 @@ function list(rt,type){
 }
 function badge(t,short){return t.kind===2?`<span class="badge x">特急${t.name&&!short?" "+esc(t.name):""}</span>`:t.kind===1?'<span class="badge k">快速</span>':'<span class="badge n">各停</span>'}
 function destText(t,rt){return (t.d?(NAMES[t.d]||t.d):rt.def)+" 行"}
-function subText(t,rt,withName){const a=[];if(withName&&t.kind===2&&t.name)a.push(esc(t.name));if(rt.sub&&t.x)a.push(`${rt.sub} ${fmt(t.x)} 発`);if(t.c)a.push("運転日注意");return a.join("・")}
+const arrOf=(t,rt)=>t.arr&&t.arr[rt.arr]!=null?t.arr[rt.arr]:null;
+function arrText(t,rt){const a=arrOf(t,rt);return a==null?"":`${rt.at} ${fmt(a)} 着（${a-t.m}分）`}
+function subText(t,rt,withName){const a=[];const ar=withName?arrOf(t,rt):null;if(ar!=null)a.push(`${fmt(ar)} 着`);if(withName&&t.kind===2&&t.name)a.push(esc(t.name));if(t.c)a.push("運転日注意");return a.join("・")}
 function untilText(t,now){const d=Math.floor(t.m-now+1e-4);return d<=0?"まもなく":d<60?`${d}分`:`${Math.floor(d/60)}時間${d%60?d%60+"分":""}`}
 function rowHTML(t,rt,now){const s=subText(t,rt,true);return `<div class="row"><span class="t">${fmt(t.m)}</span><span class="d">${destText(t,rt)}${s?`<small>${s}</small>`:""}</span>${rt.ltd?"":badge(t,true)}${now!=null?`<span class="m">${untilText(t,now)}</span>`:""}</div>`}
 
@@ -216,7 +219,7 @@ function render(){
   h=`<div class="hero glass"><div class="empty"><b>${rt.ltd?"本日の特急は終了":"本日の運転は終了"}</b>${f?`明日の${rt.ltd?"最初の特急":"始発"} ${fmt(f.m)}`:""}</div></div>`;
  }else{
   const [a,...more]=up,next=more.slice(0,2),d=Math.floor(a.m-now+1e-4),s=subText(a,rt);
-  h=`<div class="hero glass"><div class="hero-main"><div><div class="t">${fmt(a.m)}</div><div class="meta">${badge(a)}<span>${destText(a,rt)}</span>${s?`<span class="note">${s}</span>`:""}</div></div>
+  h=`<div class="hero glass"><div class="hero-main"><div><div class="t">${fmt(a.m)}</div><div class="meta">${badge(a)}<span>${destText(a,rt)}</span>${s?`<span class="note">${s}</span>`:""}</div>${arrText(a,rt)?`<div class="arr">→ ${arrText(a,rt)}</div>`:""}</div>
    <div class="cd"><small>${d<=0?"":"あと"}</small><b class="${d<=2?"soon":d>=60?"long":""}">${untilText(a,now)}</b></div></div>
    ${next.length?`<div class="rows">${next.map(t=>rowHTML(t,rt,now)).join("")}</div>`:""}</div>`;
   const rest=up.slice(3);
