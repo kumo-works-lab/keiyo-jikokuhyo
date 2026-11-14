@@ -72,6 +72,7 @@ export function parse(html) {
 }
 
 async function main() {
+  fs.mkdirSync("raw", { recursive: true });
   const old = JSON.parse(fs.readFileSync("data.json", "utf8"));
   const tables = {}, versions = {};
   const errors = [];

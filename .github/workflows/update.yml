@@ -19,7 +19,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
       - name: 取得
         run: node scripts/fetch.mjs
       - name: 変更があれば保存して通知
