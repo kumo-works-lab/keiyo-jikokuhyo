@@ -85,8 +85,14 @@ h1{font-size:34px;line-height:1.15;font-weight:800;letter-spacing:-.02em;margin:
 .empty{padding:22px 4px 26px;font-size:16px;color:var(--sub);text-align:center;line-height:1.6}
 .empty b{display:block;color:var(--text);font-size:20px;margin-bottom:4px}
 
-.foot{margin:26px 8px 0;font-size:12px;color:var(--sub);line-height:1.8}
-.foot a{color:var(--blue);text-decoration:none;font-weight:600}
+.foot{margin:24px 4px 0;font-size:12px;color:var(--sub);line-height:1.7;text-align:center}
+.foot p{margin:8px 0 0}
+.foot .info{display:inline-flex;align-items:center;height:40px;padding:0 18px;border-radius:999px;color:var(--blue);text-decoration:none;font-size:15px;font-weight:600}
+.foot details{margin-top:6px}
+.foot summary{list-style:none;cursor:pointer;color:var(--sub);font-weight:600}
+.foot summary::-webkit-details-marker{display:none}
+.foot summary::after{content:" ›";display:inline-block;transition:transform .2s}
+.foot details[open] summary::after{transform:rotate(90deg)}
 
 /* 下のタブバー（浮いたガラス） */
 .tabbar{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom) + 12px);width:min(380px,calc(100% - 40px));
@@ -112,9 +118,11 @@ h1{font-size:34px;line-height:1.15;font-weight:800;letter-spacing:-.02em;margin:
  <div class="seg glass" id="seg" role="tablist"></div>
  <div id="out"></div>
  <div class="foot">
-  <a href="https://traininfo.jreast.co.jp/train_info/chiba.aspx" target="_blank" rel="noopener">JR東日本 運行情報（遅延・運休）›</a><br>
-  時刻表どおりの時刻で、遅延は反映されません。特急に乗るには特急券が必要です。臨時ダイヤには未対応です。<br>
-  出典: JR東日本 駅時刻表（稲毛海岸・海浜幕張・東京）。毎日自動で確認しています。<br><span id="meta"></span>
+  <a class="info glass" href="https://traininfo.jreast.co.jp/train_info/chiba.aspx" target="_blank" rel="noopener">運行情報を見る ›</a>
+  <p>遅延は反映されません</p>
+  <details><summary>このアプリについて</summary>
+   <p>JR東日本の駅時刻表を毎日自動で確認しています。臨時ダイヤには未対応です。特急は特急券が必要です。<br><span id="meta"></span></p>
+  </details>
  </div>
 </div>
 
@@ -224,7 +232,7 @@ document.getElementById("daybtn").onclick=()=>{st.day=st.day==="auto"?"wd":st.da
 addEventListener("resize",moveThumb);
 document.addEventListener("visibilitychange",()=>{if(!document.hidden)render()});
 renderNav();
-fetch("data.json?"+Date.now()).then(r=>r.json()).then(d=>{DATA=d;const v=d.versions||{};document.getElementById("meta").textContent=`データ更新日: ${d.updated}（版 ${v.U_wd||"-"}）${d.note?"・"+d.note:""}`;render()})
+fetch("data.json?"+Date.now()).then(r=>r.json()).then(d=>{DATA=d;const v=d.versions||{};document.getElementById("meta").textContent=`データ更新日 ${d.updated}${d.note?"・"+d.note:""}`;render()})
  .catch(()=>{document.getElementById("out").innerHTML='<div class="hero glass"><div class="empty"><b>読み込めませんでした</b>電波の良い所で開き直してください</div></div>'});
 setInterval(render,5000);
 </script>
