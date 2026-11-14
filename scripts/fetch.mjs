@@ -45,6 +45,7 @@ async function fetchLatest(path) {
 const DEST = new Set(["習", "西", "府", "所", "一", "君", "成", "誉", "安", "勝", "館", "一・成", "幕"]);
 export function parse(html) {
   let txt = html
+    .replace(/<a[^>]+href="(?:\.\.\/)+(train\/[\w/]+)\.html"/g, " @$1 <a")
     .replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>/gi, " ")
     .replace(/<[^>]+>/g, " ")
     .replace(/&nbsp;/g, " ")
@@ -63,16 +64,17 @@ export function parse(html) {
   if (start < 0) throw new Error("時の見出しが見つからない");
   const toks = txt.slice(start).split(/\s+/).filter(Boolean);
   const out = [];
-  let hour = null, type = null, last = null;
+  let hour = null, type = null, last = null, link = null;
   for (const t of toks) {
     let m;
     if ((m = t.match(/^(\d{1,2})時$/))) { hour = +m[1]; type = null; continue; }
     if (hour === null) continue;
+    if (t.startsWith("@")) { link = t.slice(1); continue; }
     if ((m = t.match(/^(\d{2})([◆●]*)$/))) {
       const h = hour < 4 ? hour + 24 : hour;
-      last = { m: h * 60 + +m[1], type, dest: null, caution: m[2].includes("◆") };
+      last = { m: h * 60 + +m[1], type, dest: null, caution: m[2].includes("◆"), link };
       out.push(last);
-      type = null;
+      type = null; link = null;
       continue;
     }
     if (t === "◆" && last) { last.caution = true; continue; }
@@ -89,27 +91,83 @@ export function parse(html) {
         const key = x.type.slice(1);
         name = (names[key] || key || "特急").replace(/号$/, "");
       }
-      return [x.m, kind, x.dest, name, null, x.caution ? 1 : 0];
+      return [x.m, kind, x.dest, name, null, x.caution ? 1 : 0, x.link];
     })
     .sort((a, b) => a[0] - b[0])
     // 運転日の違う同じ時刻の列車が2本載ることがあるので1本にまとめる
-    .filter((r, i, a) => i === 0 || JSON.stringify(r) !== JSON.stringify(a[i - 1]));
+    .filter((r, i, a) => i === 0 || JSON.stringify(r.slice(0, 6)) !== JSON.stringify(a[i - 1].slice(0, 6)));
 }
 
 // 稲毛海岸は特急が通過するので除く
 const noTokkyu = rows => rows.filter(r => r[1] !== 2);
 
-// 東京発の特急は海浜幕張に停まるものだけ残し、海浜幕張の発車時刻を補足に入れる
-export function pairTokyo(tokyo, makuhari) {
-  const mk = makuhari.filter(r => r[1] === 2).map(r => r[0]);
-  const used = new Set();
-  return tokyo.flatMap(r => {
-    if (r[1] !== 2) return [r];
-    const hit = mk.find(x => !used.has(x) && x - r[0] >= 18 && x - r[0] <= 40);
-    if (hit == null) return [];
-    used.add(hit);
-    return [[r[0], r[1], r[2], r[3], hit, r[5]]];
+// 列車ごとのページ（停車駅一覧）から、指定した駅の時刻を読む。着があれば着、なければ発。
+export function parseTrain(html, stations) {
+  const txt = html
+    .replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;|\u3000/g, " ")
+    .replace(/\s+/g, " ");
+  return stations.map(st => {
+    const re = new RegExp(`(?:^| )${st} (?:[•・] ?)?(\\d{1,2}):(\\d{2}) ?(着|発)(?: (?:[•・] ?)?(\\d{1,2}):(\\d{2}) ?(着|発))?`);
+    const m = txt.match(re);
+    if (!m) return null;
+    const useSecond = m[3] !== "着" && m[6] === "着";
+    const h = +(useSecond ? m[4] : m[1]), mi = +(useSecond ? m[5] : m[2]);
+    return (h < 4 ? h + 24 : h) * 60 + mi;
   });
+}
+
+// どの表の列車について、どの駅の時刻を調べるか
+const ARR = {
+  U: { st: ["海浜幕張", "東京"], all: true },
+  K: { st: ["稲毛海岸"], all: true },
+  M: { st: ["東京"], all: false },
+  T: { st: ["海浜幕張"], all: false },
+};
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+async function fillArrivals(tables, versions) {
+  let cache = {};
+  try { cache = JSON.parse(fs.readFileSync("arrivals.json", "utf8")); } catch {}
+  const next = {};
+  const jobs = [];
+  for (const [k, rows] of Object.entries(tables)) {
+    const cfg = ARR[k[0]];
+    for (const r of rows) {
+      const link = r[6];
+      r[6] = null;
+      if (!link || (!cfg.all && r[1] !== 2)) continue;
+      const url = `${versions[k]}/${link}`;
+      const key = `${url}|${cfg.st.join(",")}`;
+      jobs.push({ r, url, key, st: cfg.st });
+    }
+  }
+  const todo = [...new Set(jobs.filter(j => !(j.key in cache)).map(j => j.key))];
+  console.log(`列車ページ: ${jobs.length}本中 ${todo.length}本を新しく取得`);
+  let fails = 0, firstFail = null;
+  const queue = [...todo];
+  async function worker() {
+    while (queue.length) {
+      const key = queue.shift();
+      const [url, st] = key.split("|");
+      const r = await fetch(`${BASE}/${url}.html`, { headers: { "User-Agent": "Mozilla/5.0 (personal timetable app; 1 fetch/day)" } }).catch(() => null);
+      const html = r && r.ok ? await r.text() : null;
+      const v = html ? parseTrain(html, st.split(",")) : null;
+      if (v && v.some(x => x != null)) cache[key] = v;
+      else { fails++; if (!firstFail) firstFail = { url, text: html?.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").slice(0, 1500) }; }
+      await sleep(150);
+    }
+  }
+  await Promise.all([worker(), worker(), worker()]);
+  if (firstFail) console.log("読めなかった例:", firstFail.url, "\n", firstFail.text);
+  for (const j of jobs) {
+    const v = cache[j.key];
+    if (!v) continue;
+    next[j.key] = v;
+    j.r[6] = v.map(x => (x == null ? null : x < j.r[0] ? x + 1440 : x));
+  }
+  return { cache: next, fails };
 }
 
 async function main() {
@@ -122,7 +180,7 @@ async function main() {
     fs.writeFileSync(`raw/${k}.html`, html);
     let rows = parse(html);
     if (k.startsWith("U")) rows = noTokkyu(rows);
-    if (k.startsWith("K")) rows = rows.map(r => r[1] === 2 ? [...r.slice(0, 4), "通過", r[5]] : r);
+    if (k.startsWith("K")) rows = rows.map(r => r[1] === 2 ? [...r.slice(0, 4), "通過", r[5], r[6]] : r);
     const before = old.tables[k]?.length || 0;
     if (rows.length < 60) errors.push(`${k}: 本数が少なすぎる (${rows.length})`);
     if (before && Math.abs(rows.length - before) > before * 0.3) errors.push(`${k}: 本数が大きく変化 (${before}→${rows.length})`);
@@ -132,14 +190,24 @@ async function main() {
     versions[k] = v;
     console.log(k, v, rows.length, "本 / 快速", rows.filter(r => r[1] === 1).length, "/ 特急", rows.filter(r => r[1] === 2).length);
   }
+  const { cache, fails } = await fillArrivals(tables, versions);
+  console.log("列車ページの取得失敗:", fails);
   for (const d of ["wd", "hd"]) {
-    tables[`T_${d}`] = pairTokyo(tables[`T_${d}`], tables[`K_${d}`]);
+    // 東京発の特急は海浜幕張に停まるものだけ残し、海浜幕張の時刻を補足に入れる
+    tables[`T_${d}`] = tables[`T_${d}`]
+      .filter(r => r[1] !== 2 || (r[6] && r[6][0] != null))
+      .map(r => (r[1] === 2 ? [r[0], r[1], r[2], r[3], r[6][0], r[5], r[6]] : r));
     if (!tables[`T_${d}`].some(r => r[1] === 2)) errors.push(`T_${d}: 海浜幕張に停まる特急が見つからない`);
+    const u = tables[`U_${d}`], uTokyo = u.filter(r => r[6] && r[6][1] != null).length;
+    if (uTokyo < u.length * 0.7) errors.push(`U_${d}: 東京の着時刻が読めた列車が少ない (${uTokyo}/${u.length})`);
+    const kk = tables[`K_${d}`].filter(r => r[1] !== 2), kOk = kk.filter(r => r[6] && r[6][0] != null).length;
+    if (kOk < kk.length * 0.9) errors.push(`K_${d}: 稲毛海岸の着時刻が読めた列車が少ない (${kOk}/${kk.length})`);
   }
   if (errors.length) {
     console.error(errors.join("\n"));
     process.exit(1);
   }
+  fs.writeFileSync("arrivals.json", JSON.stringify(cache));
   if (JSON.stringify(tables) === JSON.stringify(old.tables)) {
     console.log("変更なし");
     return;
