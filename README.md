@@ -4,3 +4,6 @@
 - 特急タブ: 海浜幕張→東京、東京→海浜幕張（海浜幕張に停まるわかしお等だけ）
 - GitHub Actions が毎日 4:17 にJR東日本の駅時刻表を確認し、変わっていれば `data.json` を更新して Issue で通知
 - 取得に失敗した日は古いデータのまま（Actions の失敗メールが届く）
+
+## ウィジェット（iPhone）
+`widget/keiyo-widget.js` を Scriptable アプリに貼り付けて使う。ウィジェットの Parameter で区間を選ぶ（tokyo / makuhari / back / ltd-up / ltd-down / auto）。
