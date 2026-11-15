@@ -154,7 +154,8 @@ const GROUPS=[
   {seg:"東京",title:"東京方面",from:"稲毛海岸 発",src:"U",def:"東京",excl:NOT_TOKYO,arr:1,at:"東京",xfer:true}
  ]},
  {id:"home",label:"帰り",icon:"home",routes:[
-  {title:"稲毛海岸へ",from:"海浜幕張 発",src:"K",def:"蘇我",excl:[],noPass:true,arr:0,at:"稲毛海岸"}
+  {seg:"海浜幕張",title:"稲毛海岸へ",from:"海浜幕張 発",src:"K",def:"蘇我",excl:[],noPass:true,arr:0,at:"稲毛海岸"},
+  {seg:"東京",title:"稲毛海岸へ",from:"東京 発",src:"T",def:"蘇我",excl:["府","西","所","習","幕"],needArr:true,arr:1,at:"稲毛海岸"}
  ]},
  {id:"ltd",label:"特急",icon:"ltd",routes:[
   {seg:"海浜幕張 → 東京",title:"特急で東京へ",from:"海浜幕張 発",src:"M",def:"東京",excl:NOT_TOKYO,ltd:true,arr:0,at:"東京"},
@@ -220,7 +221,11 @@ function plans(type){
 }
 function list(rt,type){
  const P=rt.xfer&&DATA.net?plans(type):null;
- return rows(rt.src,type).filter(t=>{
+ let all=rows(rt.src,type);
+ // 行き先の駅に停まらない列車（通過）は出さない。到着時刻が全く取れていない日は、絞らずに全部出す
+ if(rt.needArr){const base=all.filter(t=>!(t.d&&rt.excl.includes(t.d))&&t.kind!==2);
+  if(base.filter(t=>t.arr).length>=base.length*0.5)all=all.filter(t=>t.arr&&t.arr[rt.arr]!=null)}
+ return all.filter(t=>{
   if(P){t.best=t.ni!=null?P(t.ni):null;if(!t.best)return false}
   else if(t.d&&rt.excl.includes(t.d))return false;
   if(rt.ltd)return t.kind===2;
