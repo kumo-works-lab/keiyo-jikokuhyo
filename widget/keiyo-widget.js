@@ -3,6 +3,7 @@
 //   makuhari … 稲毛海岸 → 海浜幕張
 //   tokyo    … 稲毛海岸 → 東京（途中で乗り換えた方が早ければ、乗換回数と駅を表示）
 //   back     … 海浜幕張 → 稲毛海岸
+//   back-tokyo … 東京 → 稲毛海岸
 //   ltd-up   … 特急 海浜幕張 → 東京
 //   ltd-down … 特急 東京 → 海浜幕張
 //   auto     … 平日の朝〜昼は makuhari、15時以降は back
@@ -15,6 +16,7 @@ const ROUTES = {
   tokyo: { label: "稲毛海岸 → 東京", src: "U", def: "東京", excl: NOT_TOKYO, arr: 1, xfer: true },
   makuhari: { label: "稲毛海岸 → 海浜幕張", src: "U", def: "東京", excl: [], arr: 0 },
   back: { label: "海浜幕張 → 稲毛海岸", src: "K", def: "蘇我", excl: [], arr: 0, noPass: true },
+  "back-tokyo": { label: "東京 → 稲毛海岸", src: "T", def: "蘇我", excl: ["府", "西", "所", "習", "幕"], arr: 1, needArr: true },
   "ltd-up": { label: "特急 海浜幕張 → 東京", src: "M", def: "東京", excl: NOT_TOKYO, arr: 0, ltd: true },
   "ltd-down": { label: "特急 東京 → 海浜幕張", src: "T", def: "蘇我", excl: [], arr: 0, ltd: true },
 };
@@ -75,7 +77,7 @@ function planner(data, type) {
 
 function trains(data, rt, type) {
   const P = rt.xfer ? planner(data, type) : null;
-  return (data.tables[rt.src + "_" + type] || [])
+  let out = (data.tables[rt.src + "_" + type] || [])
     .map(r => {
       const b = P && r[7] != null ? P(r[7]) : null;
       return { m: r[0], kind: +r[1] || 0, d: r[2], name: r[3], x: r[4], arr: b ? b.at : r[6] ? r[6][rt.arr] : null, xn: b ? b.n : null, xs: b ? b.at_st : [], ok: !P || !!b };
@@ -87,6 +89,12 @@ function trains(data, rt, type) {
       if (rt.noPass && t.x === "通過") return false;
       return t.kind !== 2;
     });
+  // 行き先の駅に停まらない列車は出さない。到着時刻が全く取れていない日は絞らない
+  if (rt.needArr) {
+    const have = out.filter(t => t.arr != null).length;
+    if (have >= out.length * 0.5) out = out.filter(t => t.arr != null);
+  }
+  return out;
 }
 
 // 次の列車を最大n本（日付またぎも含む）

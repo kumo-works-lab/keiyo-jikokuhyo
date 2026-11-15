@@ -149,7 +149,9 @@ const ARR = {
   U: { st: ["海浜幕張", "東京"], all: true },
   K: { st: ["稲毛海岸"], all: true },
   M: { st: ["東京"], all: false },
-  T: { st: ["海浜幕張"], all: false },
+  // 東京発の下り: 特急の海浜幕張着に加えて、稲毛海岸への帰り用に全列車の稲毛海岸着も調べる
+  // 武蔵野線直通（府・西・所）と、稲毛海岸の手前で終わる列車（習・幕）は稲毛海岸に来ないので調べない
+  T: { st: ["海浜幕張", "稲毛海岸"], all: true, skip: ["府", "西", "所", "習", "幕"] },
 };
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
@@ -203,6 +205,7 @@ async function fillArrivals(tables, versions) {
       const link = r[6];
       r[6] = null;
       if (!link || (!cfg.all && r[1] !== 2)) continue;
+      if (cfg.skip && r[1] !== 2 && cfg.skip.includes(r[2])) continue;
       const url = `${versions[k]}/${link}`;
       const key = `${url}|${cfg.st.join(",")}`;
       jobs.push({ r, url, key, st: cfg.st });
