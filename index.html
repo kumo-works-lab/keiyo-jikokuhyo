@@ -85,6 +85,7 @@ h1{font-size:34px;line-height:1.15;font-weight:800;letter-spacing:-.02em;margin:
 .sec{font-size:13px;font-weight:600;color:var(--sub);margin:0 20px 8px;text-transform:uppercase}
 .list{border-radius:26px;padding:0 18px;background:var(--card);-webkit-backdrop-filter:blur(20px) saturate(180%);backdrop-filter:blur(20px) saturate(180%);border:.5px solid var(--glass-edge)}
 .list .t{font-size:18px}
+.more{display:block;width:100%;min-height:48px;font-size:15px;font-weight:600;color:var(--blue)}
 .empty{padding:22px 4px 26px;font-size:16px;color:var(--sub);text-align:center;line-height:1.6}
 .empty b{display:block;color:var(--text);font-size:20px;margin-bottom:4px}
 
@@ -154,7 +155,8 @@ const GROUPS=[
   {seg:"東京 → 海浜幕張",title:"特急で海浜幕張へ",from:"東京 発",src:"T",def:"蘇我",excl:[],ltd:true,arr:0,at:"海浜幕張"}
  ]}
 ];
-const st={g:0,r:[0,0,0],k:false,day:"auto"};
+const st={g:0,r:[0,0,0],k:false,day:"auto",open:false};
+const MORE_N=8; // 「この後の発車」を最初に出す本数
 // v2: 行きの並びを「海浜幕張・東京」に変えたので、前の形式の保存値は使わない
 try{const o=JSON.parse(localStorage.getItem("keiyo-st2")||"{}");Object.assign(st,o,{day:"auto"})}catch(e){}
 const save=()=>{try{localStorage.setItem("keiyo-st2",JSON.stringify({g:st.g,r:st.r,k:st.k}))}catch(e){}};
@@ -274,14 +276,15 @@ function render(){
   h=`<div class="hero glass"><div class="hero-main"><div><div class="t">${fmt(a.m)}</div><div class="meta">${badge(a)}<span>${destText(a,rt)}</span>${s?`<span class="note">${s}</span>`:""}</div>${arrText(a,rt)?`<div class="arr">→ ${arrText(a,rt)}</div>`:""}${xferLine(a)}</div>
    <div class="cd"><small>${d<=0?"":"あと"}</small><b class="${d<=2?"soon":d>=60?"long":""}">${untilText(a,now)}</b></div></div>
    ${next.length?`<div class="rows">${next.map(t=>rowHTML(t,rt,now)).join("")}</div>`:""}</div>`;
-  const rest=up.slice(3);
-  if(rest.length)h+=`<div class="sec">この後の発車</div><div class="list">${rest.map(t=>rowHTML(t,rt,null)).join("")}</div>`;
+  const rest=up.slice(3),shown=st.open?rest:rest.slice(0,MORE_N),left=rest.length-shown.length;
+  if(rest.length)h+=`<div class="sec">この後の発車</div><div class="list">${shown.map(t=>rowHTML(t,rt,null)).join("")}${left>0?`<button class="more" id="morebtn">もっと見る（あと${left}本）</button>`:st.open&&rest.length>MORE_N?`<button class="more" id="morebtn">閉じる</button>`:""}</div>`;
  }
  document.getElementById("out").innerHTML=h;
 }
 
-document.getElementById("tabbar").onclick=e=>{const b=e.target.closest("button");if(!b)return;st.g=+b.dataset.i;save();renderNav();render();scrollTo({top:0,behavior:"smooth"})};
-document.getElementById("seg").onclick=e=>{const b=e.target.closest("button");if(!b)return;st.r[st.g]=+b.dataset.i;save();renderNav();render()};
+document.getElementById("out").onclick=e=>{if(e.target.id!=="morebtn")return;const close=st.open;st.open=!st.open;render();if(close)scrollTo({top:0,behavior:"smooth"})};
+document.getElementById("tabbar").onclick=e=>{const b=e.target.closest("button");if(!b)return;st.g=+b.dataset.i;st.open=false;save();renderNav();render();scrollTo({top:0,behavior:"smooth"})};
+document.getElementById("seg").onclick=e=>{const b=e.target.closest("button");if(!b)return;st.r[st.g]=+b.dataset.i;st.open=false;save();renderNav();render()};
 document.getElementById("kbtn").onclick=()=>{st.k=!st.k;save();renderNav();render()};
 document.getElementById("daybtn").onclick=()=>{st.day=st.day==="auto"?"wd":st.day==="wd"?"hd":"auto";render()};
 addEventListener("resize",moveThumb);
