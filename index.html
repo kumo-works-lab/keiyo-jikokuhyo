@@ -85,6 +85,8 @@ h1{font-size:34px;line-height:1.15;font-weight:800;letter-spacing:-.02em;margin:
 .sec{font-size:13px;font-weight:600;color:var(--sub);margin:0 20px 8px;text-transform:uppercase}
 .list{border-radius:26px;padding:0 18px;background:var(--card);-webkit-backdrop-filter:blur(20px) saturate(180%);backdrop-filter:blur(20px) saturate(180%);border:.5px solid var(--glass-edge)}
 .list .t{font-size:18px}
+.stamp{margin:6px 0 0;font-size:12px;color:var(--sub)}
+.stamp.warn{color:var(--red,#d70015);font-weight:600}
 .more{display:block;width:100%;min-height:48px;font-size:15px;font-weight:600;color:var(--blue)}
 .empty{padding:22px 4px 26px;font-size:16px;color:var(--sub);text-align:center;line-height:1.6}
 .empty b{display:block;color:var(--text);font-size:20px;margin-bottom:4px}
@@ -124,6 +126,7 @@ h1{font-size:34px;line-height:1.15;font-weight:800;letter-spacing:-.02em;margin:
  <div class="foot">
   <a class="info glass" href="https://traininfo.jreast.co.jp/train_info/line.aspx?gid=1&amp;lineid=keiyoline" target="_blank" rel="noopener">運行情報を見る ›</a>
   <p>遅延は反映されません</p>
+  <p class="stamp" id="stamp"></p>
   <details><summary>このアプリについて</summary>
    <p>JR東日本の駅時刻表を毎日自動で確認しています。臨時ダイヤには未対応です。特急は特急券が必要です。<br><span id="meta"></span></p>
   </details>
@@ -290,7 +293,16 @@ document.getElementById("daybtn").onclick=()=>{st.day=st.day==="auto"?"wd":st.da
 addEventListener("resize",moveThumb);
 document.addEventListener("visibilitychange",()=>{if(!document.hidden)render()});
 renderNav();
-fetch("data.json?"+Date.now()).then(r=>r.json()).then(d=>{DATA=d;const v=d.versions||{};document.getElementById("meta").textContent=`データ更新日 ${d.updated}${d.note?"・"+d.note:""}`;render()})
+// 時刻表を最後に確認できた日を出す。3日以上古ければ、自動更新が止まっている可能性を知らせる
+function showStamp(d,c){
+ const el=document.getElementById("stamp"),day=c||d.updated;if(!day||!el)return;
+ const today=new Date(Date.now()+9*3600e3).toISOString().slice(0,10);
+ const age=Math.round((Date.parse(today)-Date.parse(day))/864e5);
+ const md=day.slice(5).replace("-","/").replace(/^0/,"").replace("/0","/");
+ if(age>=3){el.className="stamp warn";el.textContent=`時刻表は ${md} 以降確認できていません（${age}日前）。自動更新が止まっている可能性があります`}
+ else el.textContent=`時刻表の最終確認 ${md}`}
+const checkedP=fetch("checked.json?"+Date.now()).then(r=>r.ok?r.json():null).catch(()=>null);
+fetch("data.json?"+Date.now()).then(r=>r.json()).then(d=>{checkedP.then(c=>showStamp(d,c&&c.checked));DATA=d;const v=d.versions||{};document.getElementById("meta").textContent=`データ更新日 ${d.updated}${d.note?"・"+d.note:""}`;render()})
  .catch(()=>{document.getElementById("out").innerHTML='<div class="hero glass"><div class="empty"><b>読み込めませんでした</b>電波の良い所で開き直してください</div></div>'});
 setInterval(render,5000);
 </script>

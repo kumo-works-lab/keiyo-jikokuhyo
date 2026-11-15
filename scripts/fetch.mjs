@@ -287,6 +287,8 @@ async function main() {
   if (!net) for (const k in tables) if (k[0] === "U") for (const r of tables[k]) r.length = Math.min(r.length, 7);
   delete tables.S_wd; delete tables.S_hd;
   fs.writeFileSync("arrivals.json", JSON.stringify(cache));
+  // 最後に確認に成功した日（時刻表が変わらない日も書く。アプリが「更新が止まっていないか」を見るのに使う）
+  fs.writeFileSync("checked.json", JSON.stringify({ checked: new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 10) }));
   if (JSON.stringify(tables) === JSON.stringify(old.tables) && JSON.stringify(net) === JSON.stringify(old.net || null)) {
     console.log("変更なし");
     return;
