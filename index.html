@@ -85,6 +85,8 @@ h1{font-size:34px;line-height:1.15;font-weight:800;letter-spacing:-.02em;margin:
 .sec{font-size:13px;font-weight:600;color:var(--sub);margin:0 20px 8px;text-transform:uppercase}
 .list{border-radius:26px;padding:0 18px;background:var(--card);-webkit-backdrop-filter:blur(20px) saturate(180%);backdrop-filter:blur(20px) saturate(180%);border:.5px solid var(--glass-edge)}
 .list .t{font-size:18px}
+.stale{display:none;margin:0 0 10px;padding:10px 14px;border-radius:14px;background:rgba(215,0,21,.12);color:#d70015;font-size:14px;font-weight:600;line-height:1.4}
+.stale.on{display:block}
 .stamp{margin:6px 0 0;font-size:12px;color:var(--sub)}
 .stamp.warn{color:var(--red,#d70015);font-weight:600}
 .more{display:block;width:100%;min-height:48px;font-size:15px;font-weight:600;color:var(--blue)}
@@ -112,6 +114,7 @@ h1{font-size:34px;line-height:1.15;font-weight:800;letter-spacing:-.02em;margin:
 </head>
 <body>
 <div class="wrap">
+ <div class="stale" id="stale" role="alert"></div>
  <div class="top">
   <span class="clock" id="clock"></span>
   <div class="tools">
@@ -299,8 +302,11 @@ function showStamp(d,c){
  const today=new Date(Date.now()+9*3600e3).toISOString().slice(0,10);
  const age=Math.round((Date.parse(today)-Date.parse(day))/864e5);
  const md=day.slice(5).replace("-","/").replace(/^0/,"").replace("/0","/");
- if(age>=3){el.className="stamp warn";el.textContent=`時刻表は ${md} 以降確認できていません（${age}日前）。自動更新が止まっている可能性があります`}
- else el.textContent=`時刻表の最終確認 ${md}`}
+ const top=document.getElementById("stale");
+ if(age>=3){const m=`時刻表は ${md} 以降確認できていません（${age}日前）。自動更新が止まっている可能性があります`;
+  el.className="stamp warn";el.textContent=m;
+  top.textContent="⚠ "+m;top.classList.add("on")}
+ else{el.textContent=`時刻表の最終確認 ${md}`;top.classList.remove("on")}}
 const checkedP=fetch("checked.json?"+Date.now()).then(r=>r.ok?r.json():null).catch(()=>null);
 fetch("data.json?"+Date.now()).then(r=>r.json()).then(d=>{checkedP.then(c=>showStamp(d,c&&c.checked));DATA=d;const v=d.versions||{};document.getElementById("meta").textContent=`データ更新日 ${d.updated}${d.note?"・"+d.note:""}`;render()})
  .catch(()=>{document.getElementById("out").innerHTML='<div class="hero glass"><div class="empty"><b>読み込めませんでした</b>電波の良い所で開き直してください</div></div>'});
