@@ -71,7 +71,9 @@ h1{font-size:34px;line-height:1.15;font-weight:800;letter-spacing:-.02em;margin:
 .badge.k{background:rgba(255,122,0,.15);color:var(--rapid)}
 .badge.x{background:var(--ltd);color:#fff}
 .note{font-size:12px;color:var(--rapid);font-weight:600}
-.hero .arr{margin-top:10px;font-size:17px;font-weight:700;font-variant-numeric:tabular-nums}
+.hero-main.has-sub{padding-bottom:6px}
+.hero-sub{padding-bottom:16px}
+.hero .arr{margin-top:0;font-size:17px;font-weight:700;font-variant-numeric:tabular-nums}
 .hero .xf{margin-top:4px;font-size:14px;color:var(--sub);font-weight:600}
 .hero .xf b{color:var(--blue)}
 
@@ -284,8 +286,9 @@ function render(){
   h=`<div class="hero glass"><div class="empty"><b>${rt.ltd?"本日の特急は終了":"本日の運転は終了"}</b>${f?`明日の${rt.ltd?"最初の特急":"始発"} ${fmt(f.m)}`:""}</div></div>`;
  }else{
   const [a,...more]=up,next=more.slice(0,2),d=Math.floor(a.m-now+1e-4),s=subText(a,rt);
-  h=`<div class="hero glass"><div class="hero-main"><div><div class="t">${fmt(a.m)}</div><div class="meta">${badge(a)}<span>${destText(a,rt)}</span>${s?`<span class="note">${s}</span>`:""}</div>${arrText(a,rt)?`<div class="arr">→ ${arrText(a,rt)}</div>`:""}${xferLine(a)}</div>
-   <div class="cd"><small>${d<=0?"":"あと"}</small><b class="${d<=2?"soon":d>=60?"long":""}">${untilText(a,now)}</b></div></div>
+  h=`<div class="hero glass"><div class="hero-main${arrText(a,rt)||a.best?" has-sub":""}"><div><div class="t">${fmt(a.m)}</div><div class="meta">${badge(a)}<span>${destText(a,rt)}</span>${s?`<span class="note">${s}</span>`:""}</div></div>
+   <div class="cd"><small>${d<=0?"":"あと"}</small><b class="${d<=2?"soon":d>=60?"long":""}${d<=0?" long":""}">${untilText(a,now)}</b></div></div>
+   ${arrText(a,rt)||a.best?`<div class="hero-sub">${arrText(a,rt)?`<div class="arr">→ ${arrText(a,rt)}</div>`:""}${xferLine(a)}</div>`:""}
    ${next.length?`<div class="rows">${next.map(t=>rowHTML(t,rt,now)).join("")}</div>`:""}</div>`;
   const rest=up.slice(3),shown=st.open?rest:rest.slice(0,MORE_N),left=rest.length-shown.length;
   if(rest.length)h+=`<div class="sec">この後の発車</div><div class="list">${shown.map(t=>rowHTML(t,rt,null)).join("")}${left>0?`<button class="more" id="morebtn">もっと見る（あと${left}本）</button>`:st.open&&rest.length>MORE_N?`<button class="more" id="morebtn">閉じる</button>`:""}</div>`;
