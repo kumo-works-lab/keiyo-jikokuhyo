@@ -8,4 +8,4 @@
 - 取得に失敗した日は古いデータのまま（Actions の失敗メールが届く）
 
 ## ウィジェット（iPhone）
-`widget/keiyo-widget.js` を Scriptable アプリに貼り付けて使う。ウィジェットの Parameter で区間を選ぶ（makuhari / tokyo / back / back-tokyo / ltd-up / ltd-down / auto。空なら makuhari）。
+`widget/keiyo-widget.js` を Scriptable アプリに貼り付けて使う。ウィジェットの Parameter で区間を選ぶ（makuhari / tokyo / back / back-tokyo / all / ltd-up / ltd-down / auto。空なら makuhari）。
