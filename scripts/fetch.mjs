@@ -238,6 +238,24 @@ async function fillArrivals(tables, versions) {
   return { cache: next, fails };
 }
 
+// 祝日の一覧（土休日ダイヤの日の判定に使う）。内閣府の祝日をまとめた holidays-jp のデータを毎日取り込む。
+// 取れなかった日・おかしな中身の日は、前回の値をそのまま使う（アプリには組み込みの一覧も残してある）
+export async function fetchHolidays(old, now = Date.now()) {
+  try {
+    const r = await fetch("https://holidays-jp.github.io/api/v1/date.json", { headers: { "User-Agent": "Mozilla/5.0 (personal timetable app; 1 fetch/day)" } });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const j = await r.json();
+    const year = new Date(now + 9 * 3600e3).getUTCFullYear();
+    const dates = Object.keys(j).filter(d => /^\d{4}-\d{2}-\d{2}$/.test(d) && +d.slice(0, 4) >= year - 1).sort();
+    const thisYear = dates.filter(d => +d.slice(0, 4) === year).length;
+    if (thisYear < 14) throw new Error(`今年の祝日が少なすぎる (${thisYear}件)`); // 毎年16〜18日ある
+    return dates;
+  } catch (e) {
+    console.log("警告: 祝日を取得できませんでした。前回の値を使います:", e.message);
+    return old.holidays || null;
+  }
+}
+
 async function main() {
   fs.mkdirSync("raw", { recursive: true });
   const old = JSON.parse(fs.readFileSync("data.json", "utf8"));
@@ -292,13 +310,22 @@ async function main() {
   fs.writeFileSync("arrivals.json", JSON.stringify(cache));
   // 最後に確認に成功した日（時刻表が変わらない日も書く。アプリが「更新が止まっていないか」を見るのに使う）
   fs.writeFileSync("checked.json", JSON.stringify({ checked: new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 10) }));
-  if (JSON.stringify(tables) === JSON.stringify(old.tables) && JSON.stringify(net) === JSON.stringify(old.net || null)) {
+  const holidays = await fetchHolidays(old);
+  const sameTables = JSON.stringify(tables) === JSON.stringify(old.tables) && JSON.stringify(net) === JSON.stringify(old.net || null);
+  const sameHolidays = JSON.stringify(holidays) === JSON.stringify(old.holidays || null);
+  if (sameTables && sameHolidays) {
     console.log("変更なし");
+    return;
+  }
+  if (sameTables) {
+    // 時刻表は同じで、祝日の一覧だけ変わった日（更新日は変えない）
+    fs.writeFileSync("data.json", JSON.stringify({ ...old, holidays }));
+    console.log("祝日の一覧だけ更新しました");
     return;
   }
   const today = new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 10);
   const diff = Object.keys(tables).filter(k => k[0] !== "S").map(k => `${k}: ${old.tables[k]?.length ?? 0}→${tables[k].length}本 (版${versions[k]})`).join("\n");
-  fs.writeFileSync("data.json", JSON.stringify({ updated: today, note: "", versions, tables, net }));
+  fs.writeFileSync("data.json", JSON.stringify({ updated: today, note: "", versions, tables, net, holidays }));
   fs.writeFileSync("CHANGES.txt", diff + "\n");
   console.log("更新しました\n" + diff);
 }

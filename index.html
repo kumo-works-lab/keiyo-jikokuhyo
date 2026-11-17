@@ -176,7 +176,9 @@ const pad=n=>String(n).padStart(2,"0");
 function jst(){const p=new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Tokyo",year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",second:"2-digit",hourCycle:"h23"}).formatToParts(new Date()).reduce((a,x)=>(a[x.type]=x.value,a),{});return{y:+p.year,mo:+p.month,d:+p.day,h:+p.hour,mi:+p.minute,s:+p.second}}
 const ymd=(y,m,d)=>y+"-"+pad(m)+"-"+pad(d);
 function addDay(y,m,d,n){const t=new Date(Date.UTC(y,m-1,d+n));return{y:t.getUTCFullYear(),mo:t.getUTCMonth()+1,d:t.getUTCDate()}}
-function dayType(y,m,d){const w=new Date(Date.UTC(y,m-1,d)).getUTCDay();return(w===0||w===6||HOL.includes(ymd(y,m,d)))?"hd":"wd"}
+// 祝日は data.json の一覧（毎日自動更新）を使う。無ければ組み込みの一覧（2027年11月まで）
+let HOLSET=new Set(HOL);
+function dayType(y,m,d){const w=new Date(Date.UTC(y,m-1,d)).getUTCDay();return(w===0||w===6||HOLSET.has(ymd(y,m,d)))?"hd":"wd"}
 const fmt=m=>Math.floor(m/60)%24+":"+pad(m%60);
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
@@ -318,7 +320,7 @@ function showStamp(d,c){
   top.textContent="⚠ "+m;top.classList.add("on")}
  else{el.textContent=`時刻表の最終確認 ${md}`;top.classList.remove("on")}}
 const checkedP=fetch("checked.json?"+Date.now()).then(r=>r.ok?r.json():null).catch(()=>null);
-fetch("data.json?"+Date.now()).then(r=>r.json()).then(d=>{checkedP.then(c=>showStamp(d,c&&c.checked));DATA=d;const v=d.versions||{};document.getElementById("meta").textContent=`データ更新日 ${d.updated}${d.note?"・"+d.note:""}`;render()})
+fetch("data.json?"+Date.now()).then(r=>r.json()).then(d=>{checkedP.then(c=>showStamp(d,c&&c.checked));DATA=d;if(d.holidays&&d.holidays.length)HOLSET=new Set(d.holidays);const v=d.versions||{};document.getElementById("meta").textContent=`データ更新日 ${d.updated}${d.note?"・"+d.note:""}`;render()})
  .catch(()=>{document.getElementById("out").innerHTML='<div class="hero glass"><div class="empty"><b>読み込めませんでした</b>電波の良い所で開き直してください</div></div>'});
 setInterval(render,5000);
 </script>

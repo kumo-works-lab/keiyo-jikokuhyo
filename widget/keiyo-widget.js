@@ -12,6 +12,8 @@ const URL_BASE = "https://kumo-works-lab.github.io/keiyo-jikokuhyo/";
 
 const NAMES = { 習: "新習志野", 西: "西船橋", 府: "府中本町", 所: "東所沢", 安: "安房鴨川", 勝: "勝浦", 館: "館山", 一: "上総一ノ宮", 君: "君津", 成: "成東", 誉: "誉田", "一・成": "上総一ノ宮・成東", 幕: "海浜幕張" };
 const HOL = ["2026-11-23", "2027-01-01", "2027-01-11", "2027-02-11", "2027-02-23", "2027-03-21", "2027-03-22", "2027-04-29", "2027-05-03", "2027-05-04", "2027-05-05", "2027-07-19", "2027-08-11", "2027-09-20", "2027-09-23", "2027-10-11", "2027-11-03", "2027-11-23"];
+// 祝日は data.json の一覧（毎日自動更新）を使う。無ければ上の組み込みの一覧（2027年11月まで）
+let HOLSET = new Set(HOL);
 const NOT_TOKYO = ["習", "西", "府", "所"];
 const ROUTES = {
   tokyo: { label: "稲毛海岸 → 東京", src: "U", def: "東京", excl: NOT_TOKYO, arr: 1, xfer: true },
@@ -31,7 +33,7 @@ function jstParts(date) {
 function addDay(y, m, d, n) { const t = new Date(Date.UTC(y, m - 1, d + n)); return { y: t.getUTCFullYear(), mo: t.getUTCMonth() + 1, d: t.getUTCDate() }; }
 function dayType(y, m, d) {
   const w = new Date(Date.UTC(y, m - 1, d)).getUTCDay();
-  return w === 0 || w === 6 || HOL.includes(`${y}-${pad(m)}-${pad(d)}`) ? "hd" : "wd";
+  return w === 0 || w === 6 || HOLSET.has(`${y}-${pad(m)}-${pad(d)}`) ? "hd" : "wd";
 }
 // 運行日(JST)の0時からm分後の Date
 const toDate = (sd, m) => new Date(Date.UTC(sd.y, sd.mo - 1, sd.d) - 9 * 3600e3 + m * 60e3);
@@ -284,6 +286,7 @@ function buildAll(family, items, data) {
 async function run() {
   const now = new Date();
   const data = await loadData();
+  if (data && data.holidays && data.holidays.length) HOLSET = new Set(data.holidays);
   const family = config.widgetFamily || "systemMedium";
   const isAll = (args.widgetParameter || "").trim() === "all";
   let w, firsts;

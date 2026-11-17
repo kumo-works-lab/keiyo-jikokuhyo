@@ -9,3 +9,4 @@
 
 ## ウィジェット（iPhone）
 `widget/keiyo-widget.js` を Scriptable アプリに貼り付けて使う。ウィジェットの Parameter で区間を選ぶ（makuhari / tokyo / back / back-tokyo / all / ltd-up / ltd-down / auto。空なら makuhari）。
+- 祝日（土休日ダイヤの日）は、毎日の自動更新で holidays-jp のデータ（内閣府の祝日）を取り込んで `data.json` の `holidays` に入れる。取れなかった日は前回の値を使う。アプリ・ウィジェットに組み込みの一覧（2027年11月まで）も残してあり、`holidays` が無いときだけ使う
