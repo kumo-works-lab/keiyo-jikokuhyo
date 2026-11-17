@@ -226,7 +226,7 @@ function build(family, rt, list, data) {
 
 // ---- 4区間まとめ表示 ----
 const ALL = ["makuhari", "back", "tokyo", "back-tokyo"];
-const SHORT = { makuhari: "稲毛→幕張", back: "幕張→稲毛", tokyo: "稲毛→東京", "back-tokyo": "東京→稲毛" };
+const SHORT = { makuhari: "稲毛海岸→幕張", back: "幕張→稲毛海岸", tokyo: "稲毛海岸→東京", "back-tokyo": "東京→稲毛海岸" };
 
 function buildAll(family, items, data) {
   const w = new ListWidget();
@@ -259,7 +259,7 @@ function buildAll(family, items, data) {
   items.forEach((it, i) => {
     const f = it.list[0];
     const r = w.addStack(); r.centerAlignContent();
-    const lab = r.addStack(); lab.size = new Size(small ? 56 : 68, 0);
+    const lab = r.addStack(); lab.size = new Size(small ? 78 : 96, 0);
     txt(lab, SHORT[it.key], Font.semiboldSystemFont(small ? 11 : 12), C.sub, { scale: 0.6 });
     r.addSpacer(4);
     if (!f) { txt(r, "本日終了", Font.systemFont(13), C.sub); r.addSpacer(); }
@@ -278,8 +278,9 @@ function buildAll(family, items, data) {
       txt(n, "次 " + it.list.slice(1, 4).map(t => fmt(t.m)).join("  "), Font.systemFont(11), C.sub);
       n.addSpacer();
     }
-    if (i < items.length - 1) w.addSpacer();
+    if (i < items.length - 1) w.addSpacer(large ? 14 : 8);
   });
+  w.addSpacer(); // 余った高さは下に回し、行を上に詰める
   return w;
 }
 
