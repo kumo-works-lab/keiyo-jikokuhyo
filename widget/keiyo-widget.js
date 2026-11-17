@@ -278,8 +278,9 @@ function buildAll(family, items, data) {
       txt(n, "次 " + it.list.slice(1, 4).map(t => fmt(t.m)).join("  "), Font.systemFont(11), C.sub);
       n.addSpacer();
     }
-    if (i < items.length - 1) w.addSpacer();
+    if (i < items.length - 1) w.addSpacer(large ? 14 : 8);
   });
+  w.addSpacer(); // 余った高さは下に回し、行を上に詰める
   return w;
 }
 
