@@ -7,6 +7,7 @@
 //   ltd-up   … 特急 海浜幕張 → 東京
 //   ltd-down … 特急 東京 → 海浜幕張
 //   auto     … 平日の朝〜昼は makuhari、15時以降は back
+//   all      … 4区間（makuhari / back / tokyo / back-tokyo）の次の列車を1つにまとめて表示（中・大サイズ向け）
 const URL_BASE = "https://kumo-works-lab.github.io/keiyo-jikokuhyo/";
 
 const NAMES = { 習: "新習志野", 西: "西船橋", 府: "府中本町", 所: "東所沢", 安: "安房鴨川", 勝: "勝浦", 館: "館山", 一: "上総一ノ宮", 君: "君津", 成: "成東", 誉: "誉田", "一・成": "上総一ノ宮・成東", 幕: "海浜幕張" };
@@ -221,16 +222,85 @@ function build(family, rt, list, data) {
   return w;
 }
 
+// ---- 4区間まとめ表示 ----
+const ALL = ["makuhari", "back", "tokyo", "back-tokyo"];
+const SHORT = { makuhari: "稲毛→幕張", back: "幕張→稲毛", tokyo: "稲毛→東京", "back-tokyo": "東京→稲毛" };
+
+function buildAll(family, items, data) {
+  const w = new ListWidget();
+  w.url = URL_BASE;
+  const line = it => {
+    const f = it.list[0];
+    return `${SHORT[it.key]} ${f ? (f.tomorrow ? "明 " : "") + fmt(f.m) + (f.arr != null ? "→" + fmt(f.arr) : "") : "終了"}`;
+  };
+  // ロック画面
+  if (family === "accessoryInline") { w.addText(line(items[0])); return w; }
+  if (family === "accessoryRectangular") {
+    for (const it of items) txt(w, line(it), Font.systemFont(11), Color.white(), { scale: 0.7 });
+    return w;
+  }
+
+  const g = new LinearGradient();
+  g.colors = [C.bg1, C.bg2]; g.locations = [0, 1];
+  w.backgroundGradient = g;
+  w.setPadding(12, 14, 12, 14);
+
+  const head = w.addStack(); head.centerAlignContent();
+  const bar = head.addStack(); bar.size = new Size(4, 14); bar.cornerRadius = 2; bar.backgroundColor = C.line;
+  head.addSpacer(6);
+  txt(head, "京葉線 次の発車", Font.semiboldSystemFont(12), C.sub, { scale: 0.7 });
+  w.addSpacer(6);
+
+  if (!data) { txt(w, "データを読み込めません", Font.semiboldSystemFont(14), C.sub); return w; }
+
+  const small = family === "systemSmall", large = family === "systemLarge";
+  items.forEach((it, i) => {
+    const f = it.list[0];
+    const r = w.addStack(); r.centerAlignContent();
+    const lab = r.addStack(); lab.size = new Size(small ? 56 : 68, 0);
+    txt(lab, SHORT[it.key], Font.semiboldSystemFont(small ? 11 : 12), C.sub, { scale: 0.6 });
+    r.addSpacer(4);
+    if (!f) { txt(r, "本日終了", Font.systemFont(13), C.sub); r.addSpacer(); }
+    else {
+      txt(r, (f.tomorrow ? "明 " : "") + fmt(f.m), Font.semiboldMonospacedSystemFont(small ? 14 : 17), C.text, { scale: 0.7 });
+      r.addSpacer(5);
+      if (!small) {
+        txt(r, kindLabel(f), Font.boldSystemFont(11), kindColor(f));
+        if (f.arr != null) { r.addSpacer(5); txt(r, `→${fmt(f.arr)}着${xferShort(f)}`, Font.systemFont(12), C.sub, { scale: 0.6 }); }
+      }
+      r.addSpacer();
+      const d = r.addDate(f.date); d.applyTimerStyle(); d.font = Font.boldMonospacedSystemFont(small ? 12 : 13); d.textColor = C.line; d.lineLimit = 1; d.rightAlignText();
+    }
+    if (large && it.list.length > 1) {
+      const n = w.addStack(); n.addSpacer(72);
+      txt(n, "次 " + it.list.slice(1, 4).map(t => fmt(t.m)).join("  "), Font.systemFont(11), C.sub);
+      n.addSpacer();
+    }
+    if (i < items.length - 1) w.addSpacer();
+  });
+  return w;
+}
+
 async function run() {
   const now = new Date();
-  const rt = pickRoute(args.widgetParameter, now);
   const data = await loadData();
-  const list = data ? upcoming(data, rt, now, 8) : [];
   const family = config.widgetFamily || "systemMedium";
-  const w = build(family, rt, list, data);
+  const isAll = (args.widgetParameter || "").trim() === "all";
+  let w, firsts;
+  if (isAll) {
+    const items = ALL.map(key => ({ key, list: data ? upcoming(data, ROUTES[key], now, 4) : [] }));
+    w = buildAll(family, items, data);
+    firsts = items.map(it => it.list[0]);
+  } else {
+    const rt = pickRoute(args.widgetParameter, now);
+    const list = data ? upcoming(data, rt, now, 8) : [];
+    w = build(family, rt, list, data);
+    firsts = [list[0]];
+  }
   // 次の列車が出たら更新（iOSの都合で数分遅れることがあります）
-  const next = list[0] ? new Date(list[0].date.getTime() + 30e3) : new Date(now.getTime() + 30 * 60e3);
-  w.refreshAfterDate = new Date(Math.min(next.getTime(), now.getTime() + 30 * 60e3));
+  const times = firsts.filter(Boolean).map(f => f.date.getTime() + 30e3);
+  const next = times.length ? Math.min(...times) : now.getTime() + 30 * 60e3;
+  w.refreshAfterDate = new Date(Math.min(next, now.getTime() + 30 * 60e3));
   if (config.runsInWidget) Script.setWidget(w);
   else await w.presentMedium();
   Script.complete();
